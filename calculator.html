@@ -31,13 +31,157 @@
     <script>
         const debug = true;
 
+        // ---- evaluating the AST
+        // This is before the parsing code, because the parser depends on some of the structures and stuff defined here.
+
+        const VT_NUMBER = debug ? "VT_NUMBER" : 0;
+        const VT_ERROR = debug ? "VT_ERROR" : 1;
+
+        function makeErr(info) {
+            return {
+                vt: VT_ERROR,
+                v: info
+            };
+        }
+
+        function vtToString(vt) {
+            switch (vt) {
+                case VT_NUMBER:
+                    return "VT_NUMBER";
+                case VT_ERROR:
+                    return "VT_ERROR";
+            }
+            return "unknown type " + vt;
+        }
+
+        function evaluateNumber(x) {
+            return makeNumber(x.value);
+        }
+
+        function makeNumber(n) {
+            return {
+                vt: VT_NUMBER,
+                val: parseFloat(n)
+            };
+        }
+
+        const builtInConstantsMap = {
+            // the 'pi' constant
+            PI: makeNumber("3.14159265358979"),
+            // the 'e' constant
+            E: makeNumber("2.718281828459045"),
+            // golden ratio
+            PHI: makeNumber("1.618033988749")
+        };
+        const builtInConstants = Object.keys(builtInConstantsMap);
+
+        function evaluateBuiltinConstant(x) {
+            const func = builtInConstantsMap[x.value];
+            if (!func) {
+                return makeErr("Unknown builtin constant " + x.value);
+            }
+
+            return func;
+        }
+
+        // the function operator(T1, t2) can be found by doing applicatorMatrix[t1][t2][operator].
+        const binOpMatrix = {
+            [VT_NUMBER]: {
+                [VT_NUMBER]: {
+                    "+": (a, b) => ({ vt: a.vt, val: a.val + b.val }),
+                    "-": (a, b) => ({ vt: a.vt, val: a.val - b.val }),
+                    "*": (a, b) => ({ vt: a.vt, val: a.val * b.val }),
+                    "/": (a, b) => ({ vt: a.vt, val: a.val / b.val }),
+                    "%": (a, b) => ({ vt: a.vt, val: a.val % b.val }),
+                    "^": (a, b) => ({ vt: a.vt, val: Math.pow(a.val, b.val) })
+                }
+            }
+        };
+
+        function applyOperator(val, x, op) {
+            const val2 = evaluateExpression(x);
+            const t1 = val.vt;
+            const t2 = val2.vt;
+
+            const applicator = binOpMatrix[t1][t2][op.value];
+            if (!applicator) {
+                return makeErr(
+                    `the operator ${op.value} doesn't have a mapping from ${vtToString(t1)} -> ${vtToString(
+                        t2
+                    )}`
+                );
+            }
+
+            return applicator(val, val2);
+        }
+
+        function evaluateChain(x) {
+            let val = evaluateExpression(x.terms[0]);
+            for (let i = 1; i < x.terms.length; i++) {
+                val = applyOperator(val, x.terms[i], x.ops[i - 1]);
+            }
+            return val;
+        }
+
+        const unaryOpsMap = {
+            [VT_NUMBER]: {
+                "+": (x) => x,
+                "-": (x) => ({ vt: x.vt, val: -x.val })
+            }
+        };
+        const unaryOps = []
+        for(const typeKey in unaryOpsMap) {
+            const opList = unaryOpsMap[typeKey];
+            for (const op in opList) {
+                unaryOps.push(op);
+            }
+        }
+
+        function evaluateUnaryOp(x) {
+            const val = evaluateExpression(x.expr);
+            const func = unaryOpsMap[val.vt][x.op.value];
+            if (!func) {
+                return makeErr(`unary op ${x.op.value} can't be used on ${vtToString(val.vt)}`);
+            }
+
+            return func(val);
+        }
+
+        function evaluateExpression(x) {
+            const type = x.t;
+
+            switch (type) {
+                case T_NUMBER:
+                    return evaluateNumber(x);
+                case T_BUILTIN_CONSTANT:
+                    return evaluateBuiltinConstant(x);
+                case T_EXPR:
+                case T_TERM:
+                    return evaluateChain(x);
+                case T_UNARY_OP:
+                    return evaluateUnaryOp(x);
+                default:
+                    return "Unknown ast node type";
+            }
+        }
+
+        function evaluateProgram(program, text) {
+            if (program.error) {
+                return program.error;
+            }
+
+            return program.expressions.map((x) => evaluateExpression(x));
+        }
+
+        // ---- parser
+
         const T_EXPR = debug ? "T_EXPR" : 0;
         const T_NUMBER = debug ? "T_NUMBER" : 1;
         const T_OP_EXPR = debug ? "T_OP_EXPR" : 2;
         const T_OP_TERM = debug ? "T_OP_TERM" : 3;
         const T_TERM = debug ? "T_TERM" : 4;
-
-        // ---- parser
+        const T_BUILTIN_CONSTANT = debug ? "T_BUILTIN_CONSTANT" : 5;
+        const T_UNARY_OP = debug ? "T_UNARY_OP" : 6;
 
         // Thankyou Trevor bro https://stackoverflow.com/questions/1496826/check-if-a-single-character-is-a-whitespace
         function isWhitespace(c) {
@@ -81,15 +225,17 @@
             return pos;
         }
 
-        function parseOneOf(text, ctx, lines, oneOfWhat, type) {
+        // parses one of some array possible delimiters. oneOfWhat is an array of possible strings
+        function parseOneOf(text, ctx, lines, possibleDelimiters, type) {
             const pos = advanceWhileWhitespace(text, ctx.pos);
-            for (let i in oneOfWhat) {
-                if (pos + oneOfWhat[i].length >= text.length) {
+
+            for (let i in possibleDelimiters) {
+                const end = pos + possibleDelimiters[i].length;
+                if (end > text.length) {
                     continue;
                 }
 
-                if (text.substring(pos, pos + oneOfWhat[i].length) === oneOfWhat[i]) {
-                    const end = pos + oneOfWhat[i].length;
+                if (text.substring(pos, end) === possibleDelimiters[i]) {
                     lines.push({
                         t: type,
                         start: pos,
@@ -98,7 +244,6 @@
                     });
 
                     ctx.pos = end;
-
                     return true;
                 }
             }
@@ -106,17 +251,17 @@
             return false;
         }
 
-        // one of +, -
+        // operators with the same precedence as addition
         function parseOpExpr(text, ctx, ops) {
             return parseOneOf(text, ctx, ops, ["+", "-"], T_OP_EXPR);
         }
 
         // one of *, /, %
         function parseOpTerm(text, ctx, ops) {
-            return parseOneOf(text, ctx, ops, ["*", "/", "%"], T_OP_TERM);
+            return parseOneOf(text, ctx, ops, ["*", "/", "%", "^"], T_OP_TERM);
         }
 
-        // /\d*(\.\d*)?/
+        // operators with the same precedence as multiplication
         function parseNumber(text, ctx, terms) {
             const start = advanceWhileWhitespace(text, ctx.pos);
             let pos = start;
@@ -143,7 +288,8 @@
             return true;
         }
 
-        // <term> (<opExpr> <term>)*
+        // Parses a series of terms like <term> (<operator> <term>)*
+        // the parsers for term and operator can be specified as functions
         function parseChain(text, ctx, lines, type, termParser, opParser) {
             const terms = [];
             const ops = [];
@@ -166,6 +312,7 @@
             }
 
             if (terms.length === 1) {
+                // the tree becomes unmanageably large if we don't unwrap nodes like this
                 lines.push(terms[0]);
             } else {
                 lines.push({
@@ -180,24 +327,66 @@
             return true;
         }
 
-        // code aesthetics hack. hahaha
-        function setPos(ctx, pos) {
-            ctx.pos = pos;
+        function parseExpressionGroup(text, ctx, lines) {
+            const start = advanceWhileWhitespace(text, ctx.pos);
+
+            if (text[start] === "(") {
+                ctx.pos = start + 1;
+                if (parseExpression(text, ctx, lines)) {
+                    ctx.pos = advanceWhileWhitespace(text, ctx.pos);
+                    if (text[ctx.pos] === ")") {
+                        lines[lines.length - 1].start = start;
+                        lines[lines.length - 1].end++;
+                        ctx.pos++;
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function parseVariable(text, ctx, lines) {
+            return parseOneOf(text, ctx, lines, builtInConstants, T_BUILTIN_CONSTANT);
+        }
+
+        function parseUnaryOp(text, ctx, lines) {
+            const op = [];
+            const expr = [];
+            const unaryOps = ["+", "-"];
+
+            const start = advanceWhileWhitespace(text, ctx.pos);
+
+            ctx.pos = start;
+            if (!parseOneOf(text, ctx, op, unaryOps, T_UNARY_OP)) {
+                return false;
+            }
+
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos);
+            if (!parseExpression(text, ctx, expr)) {
+                return false;
+            }
+
+            lines.push({
+                t: T_UNARY_OP,
+                start: start,
+                end: ctx.pos,
+                op: op[0],
+                expr: expr[0]
+            });
             return true;
         }
 
         function parseThing(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
 
-            if (text[start] === "(" && setPos(ctx, start + 1) && parseExpression(text, ctx, lines)) {
-                ctx.pos = advanceWhileWhitespace(text, ctx.pos);
-                if (text[ctx.pos] === ")") {
-                    lines[lines.length - 1].start = start;
-                    lines[lines.length - 1].end++;
-                    ctx.pos++;
-                    return true;
-                }
-            }
+            ctx.pos = start;
+            if (parseExpressionGroup(text, ctx, lines)) return true;
+
+            ctx.pos = start;
+            if (parseUnaryOp(text, ctx, lines)) return true;
+
+            ctx.pos = start;
+            if (parseVariable(text, ctx, lines)) return true;
 
             ctx.pos = start;
             if (parseNumber(text, ctx, lines)) return true;
@@ -205,29 +394,17 @@
             return false;
         }
 
-        // <thing> (<opTerm> <thing>)*
         function parseTerm(text, ctx, lines) {
-            const start = ctx.pos;
-
-            if (!parseChain(text, ctx, lines, T_TERM, parseThing, parseOpTerm)) {
-                return false;
-            }
-
-            return true;
+            return parseChain(text, ctx, lines, T_TERM, parseThing, parseOpTerm);
         }
 
         function parseExpression(text, ctx, lines) {
-            const start = ctx.pos;
-
-            if (!parseChain(text, ctx, lines, T_EXPR, parseTerm, parseOpExpr)) {
-                return false;
-            }
-
-            return true;
+            return parseChain(text, ctx, lines, T_EXPR, parseTerm, parseOpExpr);
         }
 
-        function parseLine(text, ctx, lines) {
+        function parseExpressionList(text, ctx, lines) {
             const start = ctx.pos;
+
             while (parseExpression(text, ctx, lines)) {}
 
             return start !== ctx.pos;
@@ -238,18 +415,37 @@
             const ctx = { pos: 0 };
             const lines = [];
 
-            while (parseLine(text, ctx, lines)) {}
+            while (parseExpressionList(text, ctx, lines)) {}
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos);
 
-            return {
-                expressions: lines
+            const root = {
+                expressions: lines,
+                error: null
             };
+
+            if (ctx.pos !== text.length) {
+                const lines = text.substring(0, ctx.pos).split("\n");
+                const linePos = ctx.pos - lines.lastIndexOf("\n");
+                let contextText = text.substring(ctx.pos);
+                if (contextText.length > 50) {
+                    contextText = contextText.substring(0, 50) + "...";
+                }
+                root.error = `Couldn't read line ${lines.length} pos ${linePos}: "${contextText}"`;
+            }
+
+            return root;
         }
 
-        function debugPrintProgram(program, text) {
+        function debugPrintProgram(ast, text) {
             const dfs = (node) => {
                 if (typeof node === "string") {
                     return;
                 }
+
+                if (node === null || node === undefined) {
+                    return "undefined";
+                }
+
                 if (typeof node.start === "number" && typeof node.end === "number") {
                     node.text = text.substring(node.start, node.end);
                     // node.val = evaluateProgram(node.text);
@@ -262,80 +458,8 @@
                 }
             };
 
-            dfs(program);
-            return JSON.stringify(program, null, 4);
-        }
-
-        // ---- evaluating the AST
-        const VT_NUMBER = debug ? "VT_NUMBER" : 0;
-        const VT_ERROR = debug ? "VT_ERROR" : 1;
-
-        function vtToString(vt) {
-            switch (vt) {
-                case VT_NUMBER: return "VT_NUMBER";
-                case VT_ERROR: return "VT_ERROR";
-            }
-            return "unknown type " + vt;
-        }
-
-        function evaluateNumber(x) {
-            return {
-                vt: VT_NUMBER,
-                val: parseFloat(x.value)
-            };
-        }
-
-        // the function operator(T1, t2) can be found by doing applicatorMatrix[t1][t2][operator].
-        // applicator is probably a made up word, but it sounds cool so I will keep calling it that
-        const applicatorMatrix = {
-            [VT_NUMBER]: {
-                [VT_NUMBER]: {
-                    "+": (a, b) => ({ vt: VT_NUMBER, val: a.val + b.val }),
-                    "-": (a, b) => ({ vt: VT_NUMBER, val: a.val - b.val }),
-                    "*" : (a, b) => ({ vt: VT_NUMBER, val: a.val * b.val }),
-                    "/": (a, b) => ({ vt: VT_NUMBER, val: a.val / b.val }),
-                    "%": (a, b) => ({ vt: VT_NUMBER, val: a.val % b.val })
-                }
-            }
-        };
-
-        function applyOperator(val, x, op) {
-            const val2 = evaluateExpression(x);
-            const t1 = val.vt;
-            const t2 = val2.vt;
-
-            const applicator = applicatorMatrix[t1][t2][op.value];
-            if (!applicator) {
-                return { vt: VT_ERROR, v: `the operator ${op.value} doesn't have a mapping from ${vtToString(t1)} -> ${vtToString(t2)}` };
-            }
-
-            return applicator(val, val2);
-        }
-
-        function evaluateChain(x) {
-            let val = evaluateExpression(x.terms[0]);
-            for (let i = 1; i < x.terms.length; i++) {
-                val = applyOperator(val, x.terms[i], x.ops[i - 1]);
-            }
-            return val;
-        }
-
-        function evaluateExpression(x) {
-            const type = x.t;
-
-            switch (type) {
-                case T_NUMBER:
-                    return evaluateNumber(x);
-                case T_EXPR:
-                case T_TERM:
-                    return evaluateChain(x);
-                default:
-                    return "Unknown ast node type";
-            }
-        }
-
-        function evaluateProgram(program, text) {
-            return program.expressions.map((x) => evaluateExpression(x));
+            dfs(ast);
+            return JSON.stringify(ast, null, 4);
         }
 
         // ---- actually using the parser from here on
@@ -348,21 +472,22 @@
 
         function recompile(text) {
             const ast = parseProgram(text);
-            const output = evaluateProgram(ast, text);
 
-            for (const i in output) {
-                output[i] = JSON.stringify(output[i], null, 4);
+            const outputAst = debugPrintProgram(ast, text);
+
+            const outputValue = evaluateProgram(ast, text);
+            for (const i in outputValue) {
+                outputValue[i] = JSON.stringify(outputValue[i], null, 4);
             }
-            // const output = debugPrintProgram(ast, text);
 
-            return output; //.map((x) => x.toString()).join("\n");
+            return outputValue + "\n\n" + outputAst;
         }
 
         function rerender(text) {
             document.getElementById("output").innerText = recompile(text);
         }
 
-        input.innerText = "3 * (2 + (3 + 3 * (9)))";
+        input.innerText = "2 ^ 2";
         rerender(input.innerText);
     </script>
 </html>

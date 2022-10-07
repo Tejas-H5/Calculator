@@ -7,12 +7,12 @@ It is a calculator that was made by actually parsing an AST, and not by calling 
 - Operators
     - `+ - * / %`
 - Grouping things with braces
+- Negative numbers (new)
+    - yeah I forgot to add this the first time around
 
 ### What do I want to add next?
 - Parse error
     - Something like `error parsing at line l character c`
-- Negative numbers
-    - yeah I forgot to add this the first time around
 - Functions
     - `sin cos tan ceil floor .....`
 - Times
