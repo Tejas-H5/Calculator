@@ -1,7 +1,8 @@
 # What is this?
 A calculator made in javascript. 
-I've always wanted to make this thing, and I was finally able to set aside a couple hours to make it.
 It is a calculator that was made by actually parsing an AST, and not by calling `eval` like you see in all those javascript tutorials.
+It isn't actually supposed to be mathematically accurate, it is just practice for writing a parser and an evaluator.
+I find it much faster to iterate on javascript + HTML than I do with anything else
 
 ### Current feature set:
 - Operators
@@ -11,6 +12,8 @@ It is a calculator that was made by actually parsing an AST, and not by calling 
     - yeah I forgot to add this the first time around
 - Builtin functions
     - `sin cos tan ceil floor .....`
+- Loops, conditionals
+
 ### What do I want to add next?
 
 - Times
@@ -18,9 +21,16 @@ It is a calculator that was made by actually parsing an AST, and not by calling 
     - Also dates
 - Custom functions
 - Hex, binary, custom base numbers
-- Big numbers. unlimited size numbers. and manually implement arithmetic
-    - Might just yoink someone else's library for this. I can't be bothered
-- Variables, loops, conditionals
+
+- loops, conditionals
 - Vectors, matrices
 - Some way to draw things
 - A C++ port ?
+
+- Big numbers. unlimited size numbers. and manually implement arithmetic
+    - Might just yoink someone else's library for this. I can't be bothered
+    - This is quite hard to get right, I will try again later
+
+### What do I want to remove?
+- `[ERROR]: Argument 0 to function sin was of type ERROR, but it wants NUMBER`
+    - such a dumb error. but it is hard to remove. or maybe it is easy and I haven't thought about it enough. 

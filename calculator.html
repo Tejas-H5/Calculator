@@ -6,7 +6,12 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>calculator</title>
     </head>
+    <!-- // ---- styles -->
     <style>
+        *[hidden] {
+            display: none !important;
+        }
+
         body :focus {
             outline: none;
         }
@@ -21,35 +26,81 @@
             content: "|";
             width: 20px;
         }
+
+        .error {
+            color: #ff0000;
+        }
+
+        th,
+        td {
+            outline: black solid 1px;
+        }
+
+        button {
+            width: 100%;
+            height: 100%;
+        }
+
+        pre {
+            margin: 0px;
+        }
     </style>
     <body style="font-family: 'Source Code Pro', monospace; margin: 0px">
         <div style="display: absolute; width: 100%; height: 100%">
+            <!-- // ---- inputs  -->
+
             <div id="input" contenteditable="plaintext-only"></div>
-            <pre id="output" style="padding: 5px">yo</pre>
+            <pre id="output" style="padding: 5px"></pre>
+            <input type="checkbox" id="show-ast-checkbox" />
+            <label for="show-ast-checkbox">Show AST object</label><br />
+            <pre id="ast-output" style="padding: 5px"></pre>
+            <input type="checkbox" id="show-result-checkbox" />
+            <label for="show-result-checkbox">Show result object</label><br />
+            <pre id="result-output" style="padding: 5px"></pre>
+        </div>
+        <div style="padding: 10px">
+            <h2>Calculator</h2>
+
+            <div style="margin-top: 20px">
+                Not intended to be an actual calculator. It is practice for creating a parser to making a
+                programming language that I have been thinking about. This won't be the actual language, nor
+                will it be complete, but I will try to add some cool features. I don't intend to spend any
+                more than 2 days on this site.
+            </div>
+            <div style="margin-top: 20px">
+                <h4 style="display: inline">Testing:</h4>
+                <table id="testcases" style="width: 100%"></table>
+            </div>
         </div>
     </body>
     <script>
+        // --- my code
+
         const debug = true;
+        // const debug = false;
 
         // ---- evaluating the AST
         // This is before the parsing code, because the parser depends on some of the structures and stuff defined here.
 
         const VT_NUMBER = debug ? "VT_NUMBER" : 0;
         const VT_ERROR = debug ? "VT_ERROR" : 1;
+        const VT_NULL = debug ? "VT_NULL" : 2;
 
-        function makeErr(info) {
-            return {
+        function makeErr(ctx, info) {
+            const err = {
                 vt: VT_ERROR,
-                v: info
+                val: info
             };
+            ctx.errors.push(err);
+            return err;
         }
 
         function vtToString(vt) {
             switch (vt) {
                 case VT_NUMBER:
-                    return "VT_NUMBER";
+                    return "NUMBER";
                 case VT_ERROR:
-                    return "VT_ERROR";
+                    return "ERROR";
             }
             return "unknown type " + vt;
         }
@@ -66,25 +117,33 @@
         }
 
         const builtInConstantsMap = {
-            // the 'pi' constant
             PI: makeNumber("3.14159265358979"),
-            // the 'e' constant
             E: makeNumber("2.718281828459045"),
             // golden ratio
             PHI: makeNumber("1.618033988749")
         };
         const builtInConstants = Object.keys(builtInConstantsMap);
 
-        function evaluateBuiltinConstant(x) {
-            const func = builtInConstantsMap[x.text];
-            if (!func) {
-                return makeErr("Unknown builtin constant " + x.text);
+        function evaluateVariable(ctx, x, err = true) {
+            const name = x.text;
+            let v = builtInConstantsMap[name];
+            if (v) {
+                return v;
+            }
+            v = ctx.variables.get(name);
+            if (v) {
+                return v;
             }
 
-            return func;
+            if (err) {
+                return makeErr(ctx, `the variable ${name} hasn't been declared yet.
+    You can do something like x := 2; to declare it. (the semicolon supresses output)`);
+            }
+
+            return null;
         }
 
-        // the function operator(T1, t2) can be found by doing applicatorMatrix[t1][t2][operator].
+        // the function operator(T1, t2) can be found by doing binOpMatrix[t1][t2][operator].
         const binOpMatrix = {
             [VT_NUMBER]: {
                 [VT_NUMBER]: {
@@ -98,27 +157,38 @@
             }
         };
 
-        function applyOperator(val, x, op) {
-            const val2 = evaluateExpression(x);
+        function applyOperator(ctx, val, val2, op) {
             const t1 = val.vt;
             const t2 = val2.vt;
 
-            const applicator = binOpMatrix[t1][t2][op.text];
-            if (!applicator) {
+            let binOp = null,
+                binOpL1 = null,
+                binOpL2 = null;
+            binOpL1 = binOpMatrix[t1];
+            if (binOpL1) {
+                binOpL2 = binOpL1[t2];
+                if (binOpL2) {
+                    binOp = binOpL2[op.text];
+                }
+            }
+
+            if (!binOp) {
                 return makeErr(
-                    `the operator ${op.text} doesn't have a mapping from ${vtToString(t1)} -> ${vtToString(
+                    ctx,
+                    `the operator '${op.text}' doesn't have a mapping from ${vtToString(t1)} -> ${vtToString(
                         t2
                     )}`
                 );
             }
 
-            return applicator(val, val2);
+            return binOp(val, val2);
         }
 
-        function evaluateChain(x) {
-            let val = evaluateExpression(x.terms[0]);
+        function evaluateChain(ctx, x) {
+            let val = evaluateExpression(ctx, x.terms[0]);
             for (let i = 1; i < x.terms.length; i++) {
-                val = applyOperator(val, x.terms[i], x.ops[i - 1]);
+                const val2 = evaluateExpression(ctx, x.terms[i]);
+                val = applyOperator(ctx, val, val2, x.ops[i - 1]);
             }
             return val;
         }
@@ -137,92 +207,248 @@
             }
         }
 
-        function evaluateUnaryOp(x) {
-            const val = evaluateExpression(x.expr);
+        function evaluateUnaryOp(ctx, x) {
+            const val = evaluateExpression(ctx, x.expr);
             const func = unaryOpsMap[val.vt][x.op.text];
             if (!func) {
-                return makeErr(`unary op ${x.op.text} can't be used on ${vtToString(val.vt)}`);
+                return makeErr(ctx, `unary op ${x.op.text} can't be used on ${vtToString(val.vt)}`);
             }
 
             return func(val);
         }
 
-        // This is no-where near as robust as it should be in a real language.
-        // because this is just a throwaway thing I am working on for a few days, it is fine, but ideally we want
-        // to know what arguments each function accepts as well as all their types, so we can give errors
+        // imagine building an interpreted language in an interpreted language
         const builtinFunctionsMap = {
-            abs: (...args) => ({ vt: args[0].vt, val: Math.abs(...args.map((x) => x.val)) }),
-            acos: (...args) => ({ vt: args[0].vt, val: Math.acos(...args.map((x) => x.val)) }),
-            acosh: (...args) => ({ vt: args[0].vt, val: Math.acosh(...args.map((x) => x.val)) }),
-            asin: (...args) => ({ vt: args[0].vt, val: Math.asin(...args.map((x) => x.val)) }),
-            asinh: (...args) => ({ vt: args[0].vt, val: Math.asinh(...args.map((x) => x.val)) }),
-            atan: (...args) => ({ vt: args[0].vt, val: Math.atan(...args.map((x) => x.val)) }),
-            atanh: (...args) => ({ vt: args[0].vt, val: Math.atanh(...args.map((x) => x.val)) }),
-            atan2: (...args) => ({ vt: args[0].vt, val: Math.atan2(...args.map((x) => x.val)) }),
-            cbrt: (...args) => ({ vt: args[0].vt, val: Math.cbrt(...args.map((x) => x.val)) }),
-            ceil: (...args) => ({ vt: args[0].vt, val: Math.ceil(...args.map((x) => x.val)) }),
-            cos: (...args) => ({ vt: args[0].vt, val: Math.cos(...args.map((x) => x.val)) }),
-            cosh: (...args) => ({ vt: args[0].vt, val: Math.cosh(...args.map((x) => x.val)) }),
-            exp: (...args) => ({ vt: args[0].vt, val: Math.exp(...args.map((x) => x.val)) }),
-            floor: (...args) => ({ vt: args[0].vt, val: Math.floor(...args.map((x) => x.val)) }),
-            hypot: (...args) => ({ vt: args[0].vt, val: Math.hypot(...args.map((x) => x.val)) }),
-            imul: (...args) => ({ vt: args[0].vt, val: Math.imul(...args.map((x) => x.val)) }),
-            log: (...args) => ({ vt: args[0].vt, val: Math.log(...args.map((x) => x.val)) }),
-            log1p: (...args) => ({ vt: args[0].vt, val: Math.log1p(...args.map((x) => x.val)) }),
-            log10: (...args) => ({ vt: args[0].vt, val: Math.log10(...args.map((x) => x.val)) }),
-            log2: (...args) => ({ vt: args[0].vt, val: Math.log2(...args.map((x) => x.val)) }),
-            max: (...args) => ({ vt: args[0].vt, val: Math.max(...args.map((x) => x.val)) }),
-            min: (...args) => ({ vt: args[0].vt, val: Math.min(...args.map((x) => x.val)) }),
-            pow: (...args) => ({ vt: args[0].vt, val: Math.pow(...args.map((x) => x.val)) }),
-            random: (...args) => ({ vt: args[0].vt, val: Math.random(...args.map((x) => x.val)) }),
-            round: (...args) => ({ vt: args[0].vt, val: Math.round(...args.map((x) => x.val)) }),
-            sign: (...args) => ({ vt: args[0].vt, val: Math.sign(...args.map((x) => x.val)) }),
-            sin: (...args) => ({ vt: args[0].vt, val: Math.sin(...args.map((x) => x.val)) }),
-            sinh: (...args) => ({ vt: args[0].vt, val: Math.sinh(...args.map((x) => x.val)) }),
-            sqrt: (...args) => ({ vt: args[0].vt, val: Math.sqrt(...args.map((x) => x.val)) }),
-            tan: (...args) => ({ vt: args[0].vt, val: Math.tan(...args.map((x) => x.val)) }),
-            tanh: (...args) => ({ vt: args[0].vt, val: Math.tanh(...args.map((x) => x.val)) }),
-            trunc: (...args) => ({ vt: args[0].vt, val: Math.trunc(...args.map((x) => x.val)) })
+            abs: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.abs(...args.map((x) => x.val)) })
+            },
+            acos: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.acos(...args.map((x) => x.val)) })
+            },
+            acosh: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.acosh(...args.map((x) => x.val)) })
+            },
+            asin: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.asin(...args.map((x) => x.val)) })
+            },
+            asinh: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.asinh(...args.map((x) => x.val)) })
+            },
+            atan: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.atan(...args.map((x) => x.val)) })
+            },
+            atanh: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.atanh(...args.map((x) => x.val)) })
+            },
+            atan2: {
+                args: [{ vt: VT_NUMBER }, { vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.atan2(...args.map((x) => x.val)) })
+            },
+            ceil: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.ceil(...args.map((x) => x.val)) })
+            },
+            cos: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.cos(...args.map((x) => x.val)) })
+            },
+            cosh: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.cosh(...args.map((x) => x.val)) })
+            },
+            exp: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.exp(...args.map((x) => x.val)) })
+            },
+            floor: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.floor(...args.map((x) => x.val)) })
+            },
+            hypot: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.hypot(...args.map((x) => x.val)) })
+            },
+            imul: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.imul(...args.map((x) => x.val)) })
+            },
+            log: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.log(...args.map((x) => x.val)) })
+            },
+            log1p: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.log1p(...args.map((x) => x.val)) })
+            },
+            log10: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.log10(...args.map((x) => x.val)) })
+            },
+            log2: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.log2(...args.map((x) => x.val)) })
+            },
+            max: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.max(...args.map((x) => x.val)) })
+            },
+            min: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.min(...args.map((x) => x.val)) })
+            },
+            pow: {
+                args: [{ vt: VT_NUMBER }, { vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.pow(...args.map((x) => x.val)) })
+            },
+            random: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.random(...args.map((x) => x.val)) })
+            },
+            round: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.round(...args.map((x) => x.val)) })
+            },
+            sign: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.sign(...args.map((x) => x.val)) })
+            },
+            sin: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.sin(...args.map((x) => x.val)) })
+            },
+            sinh: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.sinh(...args.map((x) => x.val)) })
+            },
+            sqrt: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.sqrt(...args.map((x) => x.val)) })
+            },
+            tan: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.tan(...args.map((x) => x.val)) })
+            },
+            tanh: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.tanh(...args.map((x) => x.val)) })
+            },
+            trunc: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({ vt: args[0].vt, val: Math.trunc(...args.map((x) => x.val)) })
+            }
         };
         const builtinFunctions = Object.keys(builtinFunctionsMap);
 
-        function evaluateFunctionCall(x) {
+        function evaluateFunctionCall(ctx, x) {
             const name = x.name.text;
             const func = builtinFunctionsMap[name];
             if (!func) {
-                return makeErr(`function '${name}' not found`);
+                return makeErr(ctx, `function '${name}' not found`);
             }
 
-            const argsEvaluated = x.args.map((arg) => evaluateExpression(arg));
-            return func(...argsEvaluated);
+            const argsEvaluated = x.args.map((arg) => evaluateExpression(ctx, arg));
+
+            // I don't care if the argument counts don't match at the moment.
+            // some of the javascript math functions might accept variadic ...args,
+            // and it is more important that I am able to use that than it is that I get errors about argument counts
+            // at the moment.
+
+            for (let i = 0; i < func.args.length; i++) {
+                if (argsEvaluated[i].vt !== func.args[i].vt) {
+                    return makeErr(
+                        ctx,
+                        `Argument ${i} to function ${name} was of type ${vtToString(
+                            argsEvaluated[i].vt
+                        )}, but it wants ${vtToString(func.args[i].vt)}`
+                    );
+                }
+            }
+
+            return func.fn(...argsEvaluated);
         }
 
-        function evaluateExpression(x) {
-            const type = x.t;
+        function evaluateAssignment(ctx, x) {
+            let ident = x.lhs.text;
+            if (!ident) {
+                return makeErr(ctx, `identifier was blank`);
+            }
 
+            const rhs = evaluateExpression(ctx, x.rhs);
+            const existingVar = evaluateVariable(ctx, x.lhs, false);
+
+            if (x.isDeclaration) {
+                if (existingVar !== null) {
+                    return makeErr(ctx, `variable ${ident} already defined, with value: ${existingVar.val}`);
+                }
+            } else {
+                if (existingVar === null) {
+                    return makeErr(
+                        ctx,
+                        `variable ${ident} does not yet exist, do ${ident} := ${x.rhs.text} if you wanted to create a new variable`
+                    );
+                }
+            }
+
+            ctx.variables.set(ident, rhs);
+            return rhs;
+        }
+
+        function evaluateExpression(ctx, x) {
+            if (!x) {
+                throw new Error("expression not defined");
+            }
+
+            const type = x.t;
+            let value;
             switch (type) {
                 case T_NUMBER:
-                    return evaluateNumber(x);
+                    value = evaluateNumber(x);
+                    break;
                 case T_BUILTIN_CONSTANT:
-                    return evaluateBuiltinConstant(x);
+                case T_IDENT:
+                    value = evaluateVariable(ctx, x);
+                    break;
                 case T_EXPR:
                 case T_TERM:
-                    return evaluateChain(x);
+                    value = evaluateChain(ctx, x);
+                    break;
                 case T_UNARY_OP:
-                    return evaluateUnaryOp(x);
+                    value = evaluateUnaryOp(ctx, x);
+                    break;
                 case T_FUNCTION_CALL:
-                    return evaluateFunctionCall(x);
+                    value = evaluateFunctionCall(ctx, x);
+                    break;
+                case T_ASSIGNMENT:
+                    value = evaluateAssignment(ctx, x);
+                    break;
                 default:
-                    return "Unknown ast node type";
+                    value = makeErr(ctx, "Unknown ast node type");
+                    break;
             }
+
+            return value;
         }
 
         function evaluateProgram(program, text) {
-            if (program.error) {
-                return program.error;
-            }
+            const ctx = {
+                variables: new Map(),
+                errors: []
+            };
 
-            return program.expressions.map((x) => evaluateExpression(x));
+            ctx.results = program.expressions.map((line) => {
+                let val = evaluateExpression(ctx, line);
+                val.show = line.show;
+                return val;
+            });
+
+            return ctx;
         }
 
         // ---- parser
@@ -234,10 +460,12 @@
         const T_TERM = debug ? "T_TERM" : 4;
         const T_BUILTIN_CONSTANT = debug ? "T_BUILTIN_CONSTANT" : 5;
         const T_UNARY_OP = debug ? "T_UNARY_OP" : 6;
-        const T_TEXT = debug ? "T_TEXT" : 7; // arbitrary text, could be anything.
+        const T_IDENT = debug ? "T_IDENT" : 7; // arbitrary text, could be anything.
         const T_FUNCTION_CALL = debug ? "T_FUNCTION_CALL" : 8;
+        const T_OP_EXPONENT = debug ? "T_OP_EXPONENT" : 9;
+        const T_ASSIGNMENT = debug ? "T_ASSIGNMENT" : 10;
 
-        // Thankyou Trevor bro https://stackoverflow.com/questions/1496826/check-if-a-single-character-is-a-whitespace
+        // Thankyou Trevor https://stackoverflow.com/questions/1496826/check-if-a-single-character-is-a-whitespace
         function isWhitespace(c) {
             return (
                 c === " " ||
@@ -289,27 +517,33 @@
             return pos;
         }
 
+        function hasText(text, pos, comp) {
+            if (pos + comp.length > text.length) {
+                return false;
+            }
+
+            return text.substring(pos, pos + comp.length) === comp;
+        }
+
         // parses one of some array possible delimiters. oneOfWhat is an array of possible strings
         function parseOneOf(text, ctx, lines, possibleDelimiters, type) {
             const pos = advanceWhileWhitespace(text, ctx.pos);
+            ctx.pos = pos;
 
             for (let i in possibleDelimiters) {
                 const end = pos + possibleDelimiters[i].length;
-                if (end > text.length) {
+                if (!hasText(text, pos, possibleDelimiters[i])) {
                     continue;
                 }
 
-                if (text.substring(pos, end) === possibleDelimiters[i]) {
-                    lines.push({
-                        t: type,
-                        start: pos,
-                        end: end,
-                        text: text.substring(pos, end)
-                    });
-
-                    ctx.pos = end;
-                    return true;
-                }
+                ctx.pos = end;
+                lines.push({
+                    t: type,
+                    start: pos,
+                    end: end,
+                    text: text.substring(pos, end)
+                });
+                return true;
             }
 
             return false;
@@ -323,6 +557,11 @@
         // one of *, /, %
         function parseOpTerm(text, ctx, ops) {
             return parseOneOf(text, ctx, ops, ["*", "/", "%", "^"], T_OP_TERM);
+        }
+
+        // one of ^
+        function parseOpExponent(text, ctx, ops) {
+            return parseOneOf(text, ctx, ops, ["^"], T_OP_EXPONENT);
         }
 
         // operators with the same precedence as multiplication
@@ -359,10 +598,13 @@
         // Parses a series of terms like <term> (<operator> <term>)*
         // the parsers for term and operator can be specified as functions
         function parseChain(text, ctx, lines, type, termParser, opParser) {
+            let start = advanceWhileWhitespace(text, ctx.pos);
+            if (start === text.length) {
+                return false;
+            }
+
             const terms = [];
             const ops = [];
-
-            let start = ctx.pos;
 
             if (!termParser(text, ctx, terms)) {
                 return false;
@@ -380,15 +622,19 @@
             }
 
             if (terms.length === 1) {
-                // the tree becomes unmanageably large if we don't unwrap nodes like this
+                // unwraps a single term to be it's own thing.
+                // the AST becomes unmanageably large if we don't unwrap nodes like this.
+                // although performance might be better, it is mainly a debugging optimization
                 lines.push(terms[0]);
             } else {
                 lines.push({
                     t: type,
                     start: start,
                     end: ctx.pos,
+                    text: text.substring(start, ctx.pos),
                     terms: terms,
-                    ops: ops
+                    ops: ops,
+                    show: false
                 });
             }
 
@@ -417,7 +663,7 @@
         }
 
         function parseVariable(text, ctx, lines) {
-            return parseOneOf(text, ctx, lines, builtInConstants, T_BUILTIN_CONSTANT);
+            return parseIdentifier(text, ctx, lines);
         }
 
         function parseUnaryOp(text, ctx, lines) {
@@ -449,7 +695,7 @@
             return true;
         }
 
-        function parseName(text, ctx, lines) {
+        function parseIdentifier(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
             if (start === text.length) {
                 return false;
@@ -468,7 +714,7 @@
             ctx.pos = pos;
 
             lines.push({
-                t: T_TEXT,
+                t: T_IDENT,
                 start: start,
                 end: ctx.pos,
                 text: text.substring(start, ctx.pos)
@@ -487,7 +733,7 @@
             const args = [];
 
             ctx.pos = start;
-            if (!parseName(text, ctx, name)) {
+            if (!parseIdentifier(text, ctx, name)) {
                 return false;
             }
 
@@ -540,11 +786,12 @@
             ctx.pos = start;
             if (parseUnaryOp(text, ctx, lines)) return true;
 
-            ctx.pos = start;
-            if (parseVariable(text, ctx, lines)) return true;
-
+            // important that this is before parseVariable, the function name will be confused for a variable otherwise
             ctx.pos = start;
             if (parseFunctionCall(text, ctx, lines)) return true;
+
+            ctx.pos = start;
+            if (parseVariable(text, ctx, lines)) return true;
 
             ctx.pos = start;
             if (parseNumber(text, ctx, lines)) return true;
@@ -552,18 +799,64 @@
             return false;
         }
 
+        function parseExponent(text, ctx, lines) {
+            return parseChain(text, ctx, lines, T_TERM, parseThing, parseOpExponent);
+        }
+
         function parseTerm(text, ctx, lines) {
-            return parseChain(text, ctx, lines, T_TERM, parseThing, parseOpTerm);
+            return parseChain(text, ctx, lines, T_TERM, parseExponent, parseOpTerm);
         }
 
         function parseExpression(text, ctx, lines) {
             return parseChain(text, ctx, lines, T_EXPR, parseTerm, parseOpExpr);
         }
 
-        function parseExpressionList(text, ctx, lines) {
+        function parseAssignment(text, ctx, lines) {
+            const start = advanceWhileWhitespace(text, ctx.pos);
+            if (start === text.length) {
+                return false;
+            }
+
+            const expr = [];
+            if (!parseExpression(text, ctx, expr)) return false;
+
+            const assignOpPos = advanceWhileWhitespace(text, ctx.pos);
+
+            let isDeclaration = false;
+            if (hasText(text, assignOpPos, "=")) {
+                ctx.pos = assignOpPos + 1;
+            } else if (hasText(text, assignOpPos, ":=")) {
+                ctx.pos = assignOpPos + 2;
+                isDeclaration = true;
+            } else {
+                lines.push(expr[0]);
+                return true;
+            }
+
+            if (!parseExpression(text, ctx, expr)) return false;
+
+            lines.push({
+                t: T_ASSIGNMENT,
+                start: start,
+                end: ctx.pos,
+                lhs: expr[0],
+                rhs: expr[1],
+                isDeclaration: isDeclaration
+            });
+            return true;
+        }
+
+        function parseExpressionList(text, ctx, list) {
             const start = ctx.pos;
 
-            while (parseExpression(text, ctx, lines)) {}
+            while (parseAssignment(text, ctx, list)) {
+                const endsWithSemicolon = text[ctx.pos] === ";";
+                list[list.length - 1].show = !endsWithSemicolon;
+
+                if (endsWithSemicolon) {
+                    ctx.pos++;
+                }
+            }
 
             return start !== ctx.pos;
         }
@@ -594,7 +887,7 @@
             return root;
         }
 
-        function debugPrintProgram(ast, text) {
+        function debugFormatAST(ast, text) {
             const dfs = (node) => {
                 if (typeof node === "string") {
                     return;
@@ -605,7 +898,6 @@
                 }
 
                 if (typeof node.start === "number" && typeof node.end === "number") {
-                    node.text = text.substring(node.start, node.end);
                     // node.val = evaluateProgram(node.text);
                     delete node.start;
                     delete node.end;
@@ -617,35 +909,112 @@
             };
 
             dfs(ast);
-            return JSON.stringify(ast, null, 4);
+            return ast;
         }
 
-        // ---- actually using the parser from here on
+        // ---- actual website code
 
         const input = document.getElementById("input");
+        const showAstCheckbox = document.getElementById("show-ast-checkbox");
+        const showResultCheckbox = document.getElementById("show-result-checkbox");
+        const showAstOutput = document.getElementById("ast-output");
+        const showResltOutput = document.getElementById("result-output");
 
         input.addEventListener("input", () => {
-            rerender(input.innerText);
+            rerender();
         });
 
-        function recompile(text) {
-            const ast = parseProgram(text);
+        showAstCheckbox.addEventListener("change", () => {
+            rerender();
+        });
 
-            const outputAst = debugPrintProgram(ast, text);
+        showResultCheckbox.addEventListener("change", () => {
+            rerender();
+        });
 
-            const outputValue = evaluateProgram(ast, text);
-            for (const i in outputValue) {
-                outputValue[i] = JSON.stringify(outputValue[i], null, 4);
+        function rerender() {
+            if (showAstCheckbox.checked) {
+                showAstOutput.removeAttribute("hidden");
+            } else {
+                showAstOutput.setAttribute("hidden", true);
             }
 
-            return outputValue + "\n\n" + outputAst;
+            if (showResultCheckbox.checked) {
+                showResltOutput.removeAttribute("hidden");
+            } else {
+                showResltOutput.setAttribute("hidden", true);
+            }
+
+            // compile and interpret code
+            const text = input.innerText;
+            const ast = parseProgram(text);
+            const result = evaluateProgram(ast, text);
+
+            const getClass = (v) => {
+                if (v.vt == VT_ERROR) {
+                    return "error";
+                }
+
+                return "";
+            };
+
+            const resultsTextOutput = "Output:" + result.results
+                .filter((v) => v.show)
+                .map((v) => {
+                    return `<pre class="${getClass(v)}">[${vtToString(v.vt)}]: ${v.val}</pre>`;
+                })
+                .join("")
+
+            const errorsTextOutput =  result.errors.length === 0 ? "" : "<pre>All errors:</pre>" + result.errors
+                .map((v) => {
+                    return `<pre class="${getClass(v)}">[${vtToString(v.vt)}]: ${v.val}</pre>`;
+                })
+                .join("")
+
+            // print result(s)
+            document.getElementById("output").innerHTML = errorsTextOutput.length > 0 ? errorsTextOutput : resultsTextOutput;
+
+            // debug output
+
+            showAstOutput.innerText = JSON.stringify(debugFormatAST(ast, text), null, 4);
+            showResltOutput.innerText = JSON.stringify(result, null, 4);
         }
 
-        function rerender(text) {
-            document.getElementById("output").innerText = recompile(text);
-        }
+        // ---- add testcases,
 
-        input.innerText = "sin(2)";
-        rerender(input.innerText);
+        const testcases = [
+            {
+                name: "order of operations",
+                input: `1 * 2 + 3 * 2^2`,
+                expected: "14"
+            },
+            {
+                name: "variables",
+                input: `x := 3;
+y := 33 * x;
+x = y * x + x`,
+                expected: "300"
+            }
+        ];
+
+        const testcaseContainer = document.getElementById("testcases");
+        testcaseContainer.innerHTML =
+            `
+            <tr><th>Name</th><th>Input</th><th>Expected</th></tr>
+        ` +
+            testcases
+                .map((testcase, i) => {
+                    return `<tr><td><button class="testcase-button" data-testcase-id="${i}">${testcase.name}</button></td><td>${testcase.input}</td><td>${testcase.expected}</td></tr>`; // isn't this code great or what
+                })
+                .join("\n");
+
+        testcaseContainer.querySelectorAll(".testcase-button").forEach((button) => {
+            button.addEventListener("click", (e) => {
+                input.innerText = testcases[parseInt(button.getAttribute("data-testcase-id"))].input;
+                rerender();
+            });
+        });
+
+        // ---- end
     </script>
 </html>
