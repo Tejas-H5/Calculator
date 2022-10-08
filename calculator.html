@@ -18,7 +18,7 @@
 
         #input {
             padding-left: 5px;
-            background: #555555;
+            background: #000000;
             color: #ffffff;
         }
 
@@ -46,11 +46,25 @@
         }
     </style>
     <body style="font-family: 'Source Code Pro', monospace; margin: 0px">
-        <div style="display: absolute; width: 100%; height: 100%">
-            <!-- // ---- inputs  -->
+        <div style="padding: 10px">
+            <h2>Calculator</h2>
 
-            <div id="input" contenteditable="plaintext-only"></div>
-            <pre id="output" style="padding: 5px"></pre>
+            <div style="margin-top: 20px">
+                <!-- Not intended to be an actual calculator. It is practice for creating a parser to making a
+                programming language that I have been thinking about for a while now. This won't be the actual language, nor
+                will it be complete, but I will try to add some cool features. I don't intend to spend any
+                more than around 4 days on this site. -->
+                Type something into the black box. Or, click on some of the buttons in the table for examples.
+            </div>
+        </div>
+        <div>
+            <div style="display: flex; flex-direction: row;">
+                <div id="output" style="padding: 5px; white-space: pre; flex: 1; text-align:right;"></div>
+                <div id="input" contenteditable="plaintext-only" style="padding: 5px; white-space: pre; min-height: 60px; flex: 1;"></div>
+            </div>
+        </div>
+        <div style="padding: 10px">
+            <h4 title="these are really test cases">Debugging</h4>
             <input type="checkbox" id="show-ast-checkbox" />
             <label for="show-ast-checkbox">Show AST object</label><br />
             <pre id="ast-output" style="padding: 5px"></pre>
@@ -59,16 +73,8 @@
             <pre id="result-output" style="padding: 5px"></pre>
         </div>
         <div style="padding: 10px">
-            <h2>Calculator</h2>
-
             <div style="margin-top: 20px">
-                Not intended to be an actual calculator. It is practice for creating a parser to making a
-                programming language that I have been thinking about. This won't be the actual language, nor
-                will it be complete, but I will try to add some cool features. I don't intend to spend any
-                more than 2 days on this site.
-            </div>
-            <div style="margin-top: 20px">
-                <h4 style="display: inline">Testing:</h4>
+                <h4 title="these are really test cases">Examples</h4>
                 <table id="testcases" style="width: 100%"></table>
             </div>
         </div>
@@ -117,8 +123,8 @@
         }
 
         const builtInConstantsMap = {
-            PI: makeNumber("3.14159265358979"),
-            E: makeNumber("2.718281828459045"),
+            PI: makeNumber(Math.PI.toString()),
+            E: makeNumber(Math.E.toString()),
             // golden ratio
             PHI: makeNumber("1.618033988749")
         };
@@ -136,8 +142,11 @@
             }
 
             if (err) {
-                return makeErr(ctx, `the variable ${name} hasn't been declared yet.
-    You can do something like x := 2; to declare it. (the semicolon supresses output)`);
+                return makeErr(
+                    ctx,
+                    `the variable ${name} hasn't been declared yet.
+    You can do something like x := 2; to declare it. (the semicolon supresses output)`
+                );
             }
 
             return null;
@@ -442,9 +451,17 @@
                 errors: []
             };
 
+            if (program.error) {
+                makeErr(ctx, program.error);
+            }
+
             ctx.results = program.expressions.map((line) => {
-                let val = evaluateExpression(ctx, line);
+                let val = {
+                    ...evaluateExpression(ctx, line)
+                };
+
                 val.show = line.show;
+                val.lineNumber = line.lineNumber;
                 return val;
             });
 
@@ -506,6 +523,8 @@
             return c.toUpperCase() != c.toLowerCase() || c.codePointAt(0) > 127;
         }
 
+        // this code also parses comments.
+        // This way, comments can appear almost anywhere in the
         function advanceWhileWhitespace(text, pos) {
             if (debug) {
                 if (typeof text !== "string") {
@@ -513,7 +532,19 @@
                 }
             }
 
-            while (pos < text.length && isWhitespace(text[pos])) pos++;
+            while (pos < text.length && (isWhitespace(text[pos]) || text[pos] === "/")) {
+                // single line comment, ignore all text on the same line after //.
+                // TODO: figure out how we can actually store these comments and use them
+                // in a meaningful way
+                if (text[pos] === "/" && text[pos + 1] === "/") {
+                    pos += 2;
+                    while (pos < text.length && text[pos] !== "\n") {
+                        pos++;
+                    }
+                }
+
+                pos++;
+            }
             return pos;
         }
 
@@ -634,7 +665,8 @@
                     text: text.substring(start, ctx.pos),
                     terms: terms,
                     ops: ops,
-                    show: false
+                    show: false,
+                    lineNumber: 0
                 });
             }
 
@@ -851,7 +883,10 @@
 
             while (parseAssignment(text, ctx, list)) {
                 const endsWithSemicolon = text[ctx.pos] === ";";
-                list[list.length - 1].show = !endsWithSemicolon;
+
+                const lastAdded = list[list.length - 1];
+                lastAdded.show = !endsWithSemicolon;
+                lastAdded.lineNumber = text.substring(0, lastAdded.start).split("\n").length - 1
 
                 if (endsWithSemicolon) {
                     ctx.pos++;
@@ -920,6 +955,24 @@
         const showAstOutput = document.getElementById("ast-output");
         const showResltOutput = document.getElementById("result-output");
 
+        // HTML doesn't like tabs, we need this additional code to be able to insert tabs.
+        input.addEventListener("keydown", (e) => {
+            if (e.keyCode !== 9) 
+                return;
+
+            e.preventDefault();
+
+            const sel = document.getSelection();
+            const range = sel.getRangeAt(0);
+
+            const tabNodeValue = '\u0009' // with 4 spaces: Array(4).join('\u00a0')
+            const tabNode = document.createTextNode(tabNodeValue);
+
+            range.insertNode(tabNode);
+            range.setStartAfter(tabNode);
+            range.setEndAfter(tabNode);
+        })
+
         input.addEventListener("input", () => {
             rerender();
         });
@@ -958,27 +1011,46 @@
                 return "";
             };
 
-            const resultsTextOutput = "Output:" + result.results
-                .filter((v) => v.show)
-                .map((v) => {
-                    return `<pre class="${getClass(v)}">[${vtToString(v.vt)}]: ${v.val}</pre>`;
-                })
-                .join("")
+            // code to align results with the line the expression appeared on. 
+            let resultsTextOutput = [];
+            if (result.results.length > 0) {
+                let currentResultIndex = 0;
+                for(let ln = 0; ln <= result.results[result.results.length - 1].lineNumber; ln++) {
+                    const v = result.results[currentResultIndex];
+                    if (v.lineNumber === ln) {
+                        resultsTextOutput.push(v.show ? `[${vtToString(v.vt)}]: ${v.val}` : "");
+                        currentResultIndex++;
+                        console.log(currentResultIndex)
+                    } else {
+                        console.log(currentResultIndex)
+                        resultsTextOutput.push("");
+                    }
+                }
+            }
+            resultsTextOutput = resultsTextOutput.join("\n");
 
-            const errorsTextOutput =  result.errors.length === 0 ? "" : "<pre>All errors:</pre>" + result.errors
-                .map((v) => {
-                    return `<pre class="${getClass(v)}">[${vtToString(v.vt)}]: ${v.val}</pre>`;
-                })
-                .join("")
+            const errorsTextOutput =
+                result.errors.length === 0
+                    ? ""
+                    : "<pre>All errors:</pre>" +
+                      result.errors
+                          .map((v) => {
+                              return `<pre class="error">[${vtToString(v.vt)}]: ${v.val}</pre>`;
+                          })
+                          .join("");
 
             // print result(s)
-            document.getElementById("output").innerHTML = errorsTextOutput.length > 0 ? errorsTextOutput : resultsTextOutput;
+            document.getElementById("output").innerHTML =
+                errorsTextOutput.length > 0 ? errorsTextOutput : resultsTextOutput;
 
             // debug output
 
             showAstOutput.innerText = JSON.stringify(debugFormatAST(ast, text), null, 4);
             showResltOutput.innerText = JSON.stringify(result, null, 4);
         }
+
+        input.innerText = "x := 3;\nx";
+        rerender();
 
         // ---- add testcases,
 
@@ -989,11 +1061,31 @@
                 expected: "14"
             },
             {
+                name: "brackets",
+                input: `2^(1+1) + (2 * 3)`,
+                expected: "10"
+            },
+            {
                 name: "variables",
                 input: `x := 3;
 y := 33 * x;
 x = y * x + x`,
                 expected: "300"
+            },
+            {
+                name: "builtin math functions",
+                input: "sin(PI) + cos(PI)",
+                expected: "-1 (cries in floating point)"
+            },
+            {
+                name: "errors",
+                input: "sin(x)",
+                expected: "errors"
+            },
+            {
+                name: "comments",
+                input: "x := // 324234 * sin(x)\n3; x",
+                expected: "3"
             }
         ];
 
