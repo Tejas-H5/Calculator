@@ -46,7 +46,7 @@
         }
     </style>
     <body style="font-family: 'Source Code Pro', monospace; margin: 0px">
-        <div style="padding: 10px">
+        <div style="padding: 10px" class="not-zen">
             <h2>Calculator</h2>
 
             <div style="margin-top: 20px">
@@ -57,13 +57,22 @@
                 Type something into the black box. Or, click on some of the buttons in the table for examples.
             </div>
         </div>
-        <div>
-            <div style="display: flex; flex-direction: row;">
+        <div style="padding: 10px">
+            <!-- <div style="display: flex; flex-direction: row;">
                 <div id="output" style="padding: 5px; white-space: pre; flex: 1; text-align:right;"></div>
                 <div id="input" contenteditable="plaintext-only" style="padding: 5px; white-space: pre; min-height: 60px; flex: 1;"></div>
+            </div> -->
+            <div style="display: flex; flex-direction: row;">
+                <div id="line-numbers" style="padding: 5px; white-space: pre;"></div>
+                <div id="input" contenteditable="plaintext-only" style="padding: 5px; white-space: pre; min-height: 60px; flex: 1;"></div>
+            </div>
+            <div id="output" style="padding: 5px; white-space: pre; "></div>
+
+            <div class="not-zen">
+                <button id="zen-mode" style="width: unset">Activate zen mode</button>
             </div>
         </div>
-        <div style="padding: 10px">
+        <div style="padding: 10px" class="not-zen">
             <h4 title="these are really test cases">Debugging</h4>
             <input type="checkbox" id="show-ast-checkbox" />
             <label for="show-ast-checkbox">Show AST object</label><br />
@@ -72,7 +81,7 @@
             <label for="show-result-checkbox">Show result object</label><br />
             <pre id="result-output" style="padding: 5px"></pre>
         </div>
-        <div style="padding: 10px">
+        <div style="padding: 10px" class="not-zen">
             <div style="margin-top: 20px">
                 <h4 title="these are really test cases">Examples</h4>
                 <table id="testcases" style="width: 100%"></table>
@@ -145,7 +154,7 @@
                 return makeErr(
                     ctx,
                     `the variable ${name} hasn't been declared yet.
-    You can do something like x := 2; to declare it. (the semicolon supresses output)`
+    You can do something like ${name} := 2; to declare it. (the semicolon supresses output)`
                 );
             }
 
@@ -384,6 +393,10 @@
         }
 
         function evaluateAssignment(ctx, x) {
+            if (x.lhs.t !== T_IDENT) {
+                return makeErr(ctx, `'${ctx.text.substring(x.start, x.end)}' - invalid assignment`)
+            }
+
             let ident = x.lhs.text;
             if (!ident) {
                 return makeErr(ctx, `identifier was blank`);
@@ -448,7 +461,8 @@
         function evaluateProgram(program, text) {
             const ctx = {
                 variables: new Map(),
-                errors: []
+                errors: [],
+                text: text
             };
 
             if (program.error) {
@@ -755,6 +769,33 @@
             return true;
         }
 
+        
+        // wrongly assumes there will always be at least one element in this list
+        function parseDelimitedList(text, ctx, lines, exprParser, hasDelimiter, hasTerminator) {
+            const start = advanceWhileWhitespace(text, ctx.pos);
+            if (start === text.length) {
+                return false;
+            }
+
+            ctx.pos = start;
+            while (exprParser(text, ctx, lines)) {
+                const nextStartPos = advanceWhileWhitespace(text, ctx.pos);
+                if (hasDelimiter(text, nextStartPos)) { //text[nextStartPos] === delimiter
+                    ctx.pos = nextStartPos + 1;
+                    continue;
+                }
+
+                if (hasTerminator(text, nextStartPos)) { // text[nextStartPos] === terminator
+                    ctx.pos = nextStartPos + 1;
+                    break;
+                }
+
+                return false;
+            }
+
+            return true;
+        }
+
         function parseFunctionCall(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
             if (start === text.length) {
@@ -779,18 +820,10 @@
             if (text[argsStartPos] !== ")") {
                 ctx.pos = argsStartPos;
 
-                while (parseExpression(text, ctx, args)) {
-                    const nextStartPos = advanceWhileWhitespace(text, ctx.pos);
-                    if (text[nextStartPos] === ",") {
-                        ctx.pos = nextStartPos + 1;
-                        continue;
-                    }
-
-                    if (text[nextStartPos] === ")") {
-                        ctx.pos = nextStartPos + 1;
-                        break;
-                    }
-
+                if (!parseDelimitedList(text, ctx, args, parseExpression, 
+                    (t, pos) => hasText(text, pos, ","),
+                    (t, pos) => hasText(text, pos, ")"),
+                )) {
                     return false;
                 }
             }
@@ -953,7 +986,7 @@
         const showAstCheckbox = document.getElementById("show-ast-checkbox");
         const showResultCheckbox = document.getElementById("show-result-checkbox");
         const showAstOutput = document.getElementById("ast-output");
-        const showResltOutput = document.getElementById("result-output");
+        const showResultOutput = document.getElementById("result-output");
 
         // HTML doesn't like tabs, we need this additional code to be able to insert tabs.
         input.addEventListener("keydown", (e) => {
@@ -986,6 +1019,13 @@
         });
 
         function rerender() {
+            // line numbers. The final newline will instanty get overwritten, and not count
+            document.getElementById("line-numbers").innerText = 
+                [...Array(input.innerText.substring(0, input.innerText.length - 1).split("\n").length).keys()]
+                .join("\n");
+
+            // debug outputs
+
             if (showAstCheckbox.checked) {
                 showAstOutput.removeAttribute("hidden");
             } else {
@@ -993,12 +1033,13 @@
             }
 
             if (showResultCheckbox.checked) {
-                showResltOutput.removeAttribute("hidden");
+                showResultOutput.removeAttribute("hidden");
             } else {
-                showResltOutput.setAttribute("hidden", true);
+                showResultOutput.setAttribute("hidden", true);
             }
 
             // compile and interpret code
+
             const text = input.innerText;
             const ast = parseProgram(text);
             const result = evaluateProgram(ast, text);
@@ -1011,22 +1052,25 @@
                 return "";
             };
 
-            // code to align results with the line the expression appeared on. 
             let resultsTextOutput = [];
-            if (result.results.length > 0) {
-                let currentResultIndex = 0;
-                for(let ln = 0; ln <= result.results[result.results.length - 1].lineNumber; ln++) {
-                    const v = result.results[currentResultIndex];
-                    if (v.lineNumber === ln) {
-                        resultsTextOutput.push(v.show ? `[${vtToString(v.vt)}]: ${v.val}` : "");
-                        currentResultIndex++;
-                        console.log(currentResultIndex)
-                    } else {
-                        console.log(currentResultIndex)
-                        resultsTextOutput.push("");
-                    }
-                }
-            }
+
+            // // code to align results with the line the expression appeared on. 
+            // if (result.results.length > 0) {
+            //     let currentResultIndex = 0;
+            //     for(let ln = 0; ln <= result.results[result.results.length - 1].lineNumber; ln++) {
+            //         const v = result.results[currentResultIndex];
+            //         if (v.lineNumber === ln) {
+            //             resultsTextOutput.push(v.show ? `[${vtToString(v.vt)}]: ${v.val}` : "");
+            //             currentResultIndex++;
+            //             console.log(currentResultIndex)
+            //         } else {
+            //             console.log(currentResultIndex)
+            //             resultsTextOutput.push("");
+            //         }
+            //     }
+            // }
+            resultsTextOutput = result.results.map(v => v.show ? `[${vtToString(v.vt)}]: ${v.val}` : undefined)
+                .filter(v => !!v)
             resultsTextOutput = resultsTextOutput.join("\n");
 
             const errorsTextOutput =
@@ -1046,7 +1090,7 @@
             // debug output
 
             showAstOutput.innerText = JSON.stringify(debugFormatAST(ast, text), null, 4);
-            showResltOutput.innerText = JSON.stringify(result, null, 4);
+            showResultOutput.innerText = JSON.stringify(result, null, 4);
         }
 
         input.innerText = "x := 3;\nx";
@@ -1071,6 +1115,15 @@
 y := 33 * x;
 x = y * x + x`,
                 expected: "300"
+            },
+            {
+                name: "assignment errors",
+                input: `3 := 3;
+x = 3;
+y := 3;
+y := 3;
+`,
+                expected: "errors"
             },
             {
                 name: "builtin math functions",
@@ -1106,6 +1159,24 @@ x = y * x + x`,
                 rerender();
             });
         });
+
+
+        // ---- zen mode
+
+        const zenMode = document.getElementById("zen-mode");
+        zenMode.addEventListener("click", () => {
+            document.querySelectorAll(".not-zen").forEach((el) => {
+                el.setAttribute("hidden", true);
+            })
+        })
+
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+                document.querySelectorAll(".not-zen").forEach((el) => {
+                    el.removeAttribute("hidden", true);
+                })  
+            }
+        })
 
         // ---- end
     </script>
