@@ -55,7 +55,7 @@
         }
 
         function evaluateNumber(x) {
-            return makeNumber(x.value);
+            return makeNumber(x.text);
         }
 
         function makeNumber(n) {
@@ -76,9 +76,9 @@
         const builtInConstants = Object.keys(builtInConstantsMap);
 
         function evaluateBuiltinConstant(x) {
-            const func = builtInConstantsMap[x.value];
+            const func = builtInConstantsMap[x.text];
             if (!func) {
-                return makeErr("Unknown builtin constant " + x.value);
+                return makeErr("Unknown builtin constant " + x.text);
             }
 
             return func;
@@ -103,10 +103,10 @@
             const t1 = val.vt;
             const t2 = val2.vt;
 
-            const applicator = binOpMatrix[t1][t2][op.value];
+            const applicator = binOpMatrix[t1][t2][op.text];
             if (!applicator) {
                 return makeErr(
-                    `the operator ${op.value} doesn't have a mapping from ${vtToString(t1)} -> ${vtToString(
+                    `the operator ${op.text} doesn't have a mapping from ${vtToString(t1)} -> ${vtToString(
                         t2
                     )}`
                 );
@@ -129,8 +129,8 @@
                 "-": (x) => ({ vt: x.vt, val: -x.val })
             }
         };
-        const unaryOps = []
-        for(const typeKey in unaryOpsMap) {
+        const unaryOps = [];
+        for (const typeKey in unaryOpsMap) {
             const opList = unaryOpsMap[typeKey];
             for (const op in opList) {
                 unaryOps.push(op);
@@ -139,12 +139,62 @@
 
         function evaluateUnaryOp(x) {
             const val = evaluateExpression(x.expr);
-            const func = unaryOpsMap[val.vt][x.op.value];
+            const func = unaryOpsMap[val.vt][x.op.text];
             if (!func) {
-                return makeErr(`unary op ${x.op.value} can't be used on ${vtToString(val.vt)}`);
+                return makeErr(`unary op ${x.op.text} can't be used on ${vtToString(val.vt)}`);
             }
 
             return func(val);
+        }
+
+        // This is no-where near as robust as it should be in a real language.
+        // because this is just a throwaway thing I am working on for a few days, it is fine, but ideally we want
+        // to know what arguments each function accepts as well as all their types, so we can give errors
+        const builtinFunctionsMap = {
+            abs: (...args) => ({ vt: args[0].vt, val: Math.abs(...args.map((x) => x.val)) }),
+            acos: (...args) => ({ vt: args[0].vt, val: Math.acos(...args.map((x) => x.val)) }),
+            acosh: (...args) => ({ vt: args[0].vt, val: Math.acosh(...args.map((x) => x.val)) }),
+            asin: (...args) => ({ vt: args[0].vt, val: Math.asin(...args.map((x) => x.val)) }),
+            asinh: (...args) => ({ vt: args[0].vt, val: Math.asinh(...args.map((x) => x.val)) }),
+            atan: (...args) => ({ vt: args[0].vt, val: Math.atan(...args.map((x) => x.val)) }),
+            atanh: (...args) => ({ vt: args[0].vt, val: Math.atanh(...args.map((x) => x.val)) }),
+            atan2: (...args) => ({ vt: args[0].vt, val: Math.atan2(...args.map((x) => x.val)) }),
+            cbrt: (...args) => ({ vt: args[0].vt, val: Math.cbrt(...args.map((x) => x.val)) }),
+            ceil: (...args) => ({ vt: args[0].vt, val: Math.ceil(...args.map((x) => x.val)) }),
+            cos: (...args) => ({ vt: args[0].vt, val: Math.cos(...args.map((x) => x.val)) }),
+            cosh: (...args) => ({ vt: args[0].vt, val: Math.cosh(...args.map((x) => x.val)) }),
+            exp: (...args) => ({ vt: args[0].vt, val: Math.exp(...args.map((x) => x.val)) }),
+            floor: (...args) => ({ vt: args[0].vt, val: Math.floor(...args.map((x) => x.val)) }),
+            hypot: (...args) => ({ vt: args[0].vt, val: Math.hypot(...args.map((x) => x.val)) }),
+            imul: (...args) => ({ vt: args[0].vt, val: Math.imul(...args.map((x) => x.val)) }),
+            log: (...args) => ({ vt: args[0].vt, val: Math.log(...args.map((x) => x.val)) }),
+            log1p: (...args) => ({ vt: args[0].vt, val: Math.log1p(...args.map((x) => x.val)) }),
+            log10: (...args) => ({ vt: args[0].vt, val: Math.log10(...args.map((x) => x.val)) }),
+            log2: (...args) => ({ vt: args[0].vt, val: Math.log2(...args.map((x) => x.val)) }),
+            max: (...args) => ({ vt: args[0].vt, val: Math.max(...args.map((x) => x.val)) }),
+            min: (...args) => ({ vt: args[0].vt, val: Math.min(...args.map((x) => x.val)) }),
+            pow: (...args) => ({ vt: args[0].vt, val: Math.pow(...args.map((x) => x.val)) }),
+            random: (...args) => ({ vt: args[0].vt, val: Math.random(...args.map((x) => x.val)) }),
+            round: (...args) => ({ vt: args[0].vt, val: Math.round(...args.map((x) => x.val)) }),
+            sign: (...args) => ({ vt: args[0].vt, val: Math.sign(...args.map((x) => x.val)) }),
+            sin: (...args) => ({ vt: args[0].vt, val: Math.sin(...args.map((x) => x.val)) }),
+            sinh: (...args) => ({ vt: args[0].vt, val: Math.sinh(...args.map((x) => x.val)) }),
+            sqrt: (...args) => ({ vt: args[0].vt, val: Math.sqrt(...args.map((x) => x.val)) }),
+            tan: (...args) => ({ vt: args[0].vt, val: Math.tan(...args.map((x) => x.val)) }),
+            tanh: (...args) => ({ vt: args[0].vt, val: Math.tanh(...args.map((x) => x.val)) }),
+            trunc: (...args) => ({ vt: args[0].vt, val: Math.trunc(...args.map((x) => x.val)) })
+        };
+        const builtinFunctions = Object.keys(builtinFunctionsMap);
+
+        function evaluateFunctionCall(x) {
+            const name = x.name.text;
+            const func = builtinFunctionsMap[name];
+            if (!func) {
+                return makeErr(`function '${name}' not found`);
+            }
+
+            const argsEvaluated = x.args.map((arg) => evaluateExpression(arg));
+            return func(...argsEvaluated);
         }
 
         function evaluateExpression(x) {
@@ -160,6 +210,8 @@
                     return evaluateChain(x);
                 case T_UNARY_OP:
                     return evaluateUnaryOp(x);
+                case T_FUNCTION_CALL:
+                    return evaluateFunctionCall(x);
                 default:
                     return "Unknown ast node type";
             }
@@ -182,6 +234,8 @@
         const T_TERM = debug ? "T_TERM" : 4;
         const T_BUILTIN_CONSTANT = debug ? "T_BUILTIN_CONSTANT" : 5;
         const T_UNARY_OP = debug ? "T_UNARY_OP" : 6;
+        const T_TEXT = debug ? "T_TEXT" : 7; // arbitrary text, could be anything.
+        const T_FUNCTION_CALL = debug ? "T_FUNCTION_CALL" : 8;
 
         // Thankyou Trevor bro https://stackoverflow.com/questions/1496826/check-if-a-single-character-is-a-whitespace
         function isWhitespace(c) {
@@ -220,7 +274,17 @@
             );
         }
 
+        function isLetter(c) {
+            return c.toUpperCase() != c.toLowerCase() || c.codePointAt(0) > 127;
+        }
+
         function advanceWhileWhitespace(text, pos) {
+            if (debug) {
+                if (typeof text !== "string") {
+                    throw new Error("you might be calling advanceWhiteSpace wrong");
+                }
+            }
+
             while (pos < text.length && isWhitespace(text[pos])) pos++;
             return pos;
         }
@@ -240,7 +304,7 @@
                         t: type,
                         start: pos,
                         end: end,
-                        value: text.substring(pos, end)
+                        text: text.substring(pos, end)
                     });
 
                     ctx.pos = end;
@@ -264,6 +328,10 @@
         // operators with the same precedence as multiplication
         function parseNumber(text, ctx, terms) {
             const start = advanceWhileWhitespace(text, ctx.pos);
+            if (start === text.length) {
+                return false;
+            }
+
             let pos = start;
             let foundDecimal = false;
             while (pos < text.length && (isDigit(text[pos]) || (!foundDecimal && text[pos] === "."))) {
@@ -282,7 +350,7 @@
                 t: T_NUMBER,
                 start: start,
                 end: pos,
-                value: text.substring(start, pos)
+                text: text.substring(start, pos)
             });
             ctx.pos = pos;
             return true;
@@ -329,6 +397,9 @@
 
         function parseExpressionGroup(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
+            if (start === text.length) {
+                return false;
+            }
 
             if (text[start] === "(") {
                 ctx.pos = start + 1;
@@ -350,11 +421,13 @@
         }
 
         function parseUnaryOp(text, ctx, lines) {
+            const start = advanceWhileWhitespace(text, ctx.pos);
+            if (start === text.length) {
+                return false;
+            }
+
             const op = [];
             const expr = [];
-            const unaryOps = ["+", "-"];
-
-            const start = advanceWhileWhitespace(text, ctx.pos);
 
             ctx.pos = start;
             if (!parseOneOf(text, ctx, op, unaryOps, T_UNARY_OP)) {
@@ -376,8 +449,90 @@
             return true;
         }
 
+        function parseName(text, ctx, lines) {
+            const start = advanceWhileWhitespace(text, ctx.pos);
+            if (start === text.length) {
+                return false;
+            }
+
+            let pos = start;
+            if (!isLetter(text[pos])) {
+                return false;
+            }
+            pos++;
+
+            while (pos < text.length && (isDigit(text[pos]) || isLetter(text[pos]))) {
+                pos++;
+            }
+
+            ctx.pos = pos;
+
+            lines.push({
+                t: T_TEXT,
+                start: start,
+                end: ctx.pos,
+                text: text.substring(start, ctx.pos)
+            });
+
+            return true;
+        }
+
+        function parseFunctionCall(text, ctx, lines) {
+            const start = advanceWhileWhitespace(text, ctx.pos);
+            if (start === text.length) {
+                return false;
+            }
+
+            const name = [];
+            const args = [];
+
+            ctx.pos = start;
+            if (!parseName(text, ctx, name)) {
+                return false;
+            }
+
+            if (text[ctx.pos] != "(") {
+                return false;
+            }
+            ctx.pos++;
+
+            const argsStartPos = advanceWhileWhitespace(text, ctx.pos);
+
+            if (text[argsStartPos] !== ")") {
+                ctx.pos = argsStartPos;
+
+                while (parseExpression(text, ctx, args)) {
+                    const nextStartPos = advanceWhileWhitespace(text, ctx.pos);
+                    if (text[nextStartPos] === ",") {
+                        ctx.pos = nextStartPos + 1;
+                        continue;
+                    }
+
+                    if (text[nextStartPos] === ")") {
+                        ctx.pos = nextStartPos + 1;
+                        break;
+                    }
+
+                    return false;
+                }
+            }
+
+            lines.push({
+                t: T_FUNCTION_CALL,
+                start: start,
+                end: ctx.pos,
+                name: name[0],
+                args: args
+            });
+
+            return true;
+        }
+
         function parseThing(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
+            if (start === text.length) {
+                return false;
+            }
 
             ctx.pos = start;
             if (parseExpressionGroup(text, ctx, lines)) return true;
@@ -387,6 +542,9 @@
 
             ctx.pos = start;
             if (parseVariable(text, ctx, lines)) return true;
+
+            ctx.pos = start;
+            if (parseFunctionCall(text, ctx, lines)) return true;
 
             ctx.pos = start;
             if (parseNumber(text, ctx, lines)) return true;
@@ -487,7 +645,7 @@
             document.getElementById("output").innerText = recompile(text);
         }
 
-        input.innerText = "2 ^ 2";
+        input.innerText = "sin(2)";
         rerender(input.innerText);
     </script>
 </html>

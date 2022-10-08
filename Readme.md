@@ -9,17 +9,17 @@ It is a calculator that was made by actually parsing an AST, and not by calling 
 - Grouping things with braces
 - Negative numbers (new)
     - yeah I forgot to add this the first time around
-
-### What do I want to add next?
-- Parse error
-    - Something like `error parsing at line l character c`
-- Functions
+- Builtin functions
     - `sin cos tan ceil floor .....`
+### What do I want to add next?
+
 - Times
     - like `1:20am` and then we can add/subtract them to get durations and such
     - Also dates
-- Big numbers. unlimited size numbers. and manually implement arithmetic
+- Custom functions
 - Hex, binary, custom base numbers
+- Big numbers. unlimited size numbers. and manually implement arithmetic
+    - Might just yoink someone else's library for this. I can't be bothered
 - Variables, loops, conditionals
 - Vectors, matrices
 - Some way to draw things
