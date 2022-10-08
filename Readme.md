@@ -16,17 +16,17 @@ I find it much faster to iterate on javascript + HTML than I do with anything el
 
 ### What do I want to add next?
 
+- Custom functions
+- loops, conditionals
+- Vectors, matrices
+
+- Some way to draw things
+- A C++ port ?
+- Hex, binary, custom base numbers
 - Times
     - like `1:20am` and then we can add/subtract them to get durations and such
     - Also dates
-- Custom functions
-- Hex, binary, custom base numbers
-
-- loops, conditionals
-- Vectors, matrices
-- Some way to draw things
-- A C++ port ?
-
+    - And numbers with arbitrary units
 - Big numbers. unlimited size numbers. and manually implement arithmetic
     - Might just yoink someone else's library for this. I can't be bothered
     - This is quite hard to get right, I will try again later
