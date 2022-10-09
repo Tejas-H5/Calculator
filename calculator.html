@@ -16,11 +16,38 @@
             outline: none;
         }
 
+        textarea {
+            border: none;
+            overflow: hidden;
+            outline: none;
+
+            margin:0px;
+
+            -webkit-box-shadow: none;
+            -moz-box-shadow: none;
+            box-shadow: none;
+
+            resize: none; /*remove the resize handle on the bottom right*/
+        }
+
         #input {
             padding-left: 5px;
             background: #000000;
             color: #ffffff;
+            font-size: 1.2rem;
+            line-height: 1.2rem;
+            -moz-tab-size: 4;
+            tab-size: 4;
         }
+        #line-numbers {
+            font-size: 1.2rem;
+            line-height: 1.2rem;
+            color: #aaaaaa;
+            background: #000000;
+            outline:none;
+            border-right: 1px solid #aaaaaa;
+        }
+
 
         .code div:before {
             content: "|";
@@ -36,9 +63,9 @@
             outline: black solid 1px;
         }
 
-        button {
-            width: 100%;
-            height: 100%;
+        #testcases button {
+            margin: 5px;
+            display: block;
         }
 
         pre {
@@ -54,22 +81,22 @@
                 programming language that I have been thinking about for a while now. This won't be the actual language, nor
                 will it be complete, but I will try to add some cool features. I don't intend to spend any
                 more than around 4 days on this site. -->
-                Type something into the black box. Or, click on some of the buttons in the table for examples.
+                Type something into the box below. Or, click on some of the buttons in the table for examples.
             </div>
         </div>
-        <div style="padding: 10px">
+        <div >
             <!-- <div style="display: flex; flex-direction: row;">
                 <div id="output" style="padding: 5px; white-space: pre; flex: 1; text-align:right;"></div>
                 <div id="input" contenteditable="plaintext-only" style="padding: 5px; white-space: pre; min-height: 60px; flex: 1;"></div>
             </div> -->
             <div style="display: flex; flex-direction: row;">
                 <div id="line-numbers" style="padding: 5px; white-space: pre;"></div>
-                <div id="input" contenteditable="plaintext-only" style="padding: 5px; white-space: pre; min-height: 60px; flex: 1;"></div>
+                <textarea id="input" contenteditable="plaintext-only" style="padding: 5px; white-space: pre; min-height: 60px; flex: 1;"></textarea>
             </div>
             <div id="output" style="padding: 5px; white-space: pre; "></div>
 
-            <div class="not-zen">
-                <button id="zen-mode" style="width: unset">Activate zen mode</button>
+            <div class="not-zen" style="margin-top:50px; padding:10px;">
+                <button id="zen-mode" style="width: unset">Remove clutter</button>
             </div>
         </div>
         <div style="padding: 10px" class="not-zen">
@@ -422,6 +449,19 @@
             return rhs;
         }
 
+        function evaluateTernary(ctx, x) {
+            const condition = evaluateExpression(ctx, x.conditional);
+            if (condition.vt !== VT_NUMBER) {
+                return makeErr(ctx, `condition needs to be a number, anything less than 0.5 is false, anything >= 0.5 is true`);
+            }
+
+            if (condition.val >= 0.5) {
+                return evaluateExpression(ctx, x.ifTrue);
+            }
+            
+            return evaluateExpression(ctx, x.else);
+        }
+
         function evaluateExpression(ctx, x) {
             if (!x) {
                 throw new Error("expression not defined");
@@ -429,6 +469,9 @@
 
             const type = x.t;
             let value;
+
+            console.log(type)
+
             switch (type) {
                 case T_NUMBER:
                     value = evaluateNumber(x);
@@ -449,6 +492,9 @@
                     break;
                 case T_ASSIGNMENT:
                     value = evaluateAssignment(ctx, x);
+                    break;
+                case T_TERNARY:
+                    value = evaluateTernary(ctx, x);
                     break;
                 default:
                     value = makeErr(ctx, "Unknown ast node type");
@@ -495,6 +541,7 @@
         const T_FUNCTION_CALL = debug ? "T_FUNCTION_CALL" : 8;
         const T_OP_EXPONENT = debug ? "T_OP_EXPONENT" : 9;
         const T_ASSIGNMENT = debug ? "T_ASSIGNMENT" : 10;
+        const T_TERNARY = debug ? "T_TERNARY" : 11;
 
         // Thankyou Trevor https://stackoverflow.com/questions/1496826/check-if-a-single-character-is-a-whitespace
         function isWhitespace(c) {
@@ -687,7 +734,7 @@
             return true;
         }
 
-        function parseExpressionGroup(text, ctx, lines) {
+        function parseGroup(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
             if (start === text.length) {
                 return false;
@@ -695,7 +742,7 @@
 
             if (text[start] === "(") {
                 ctx.pos = start + 1;
-                if (parseExpression(text, ctx, lines)) {
+                if (parseTopLevelItem(text, ctx, lines)) {
                     ctx.pos = advanceWhileWhitespace(text, ctx.pos);
                     if (text[ctx.pos] === ")") {
                         lines[lines.length - 1].start = start;
@@ -727,7 +774,7 @@
             }
 
             ctx.pos = advanceWhileWhitespace(text, ctx.pos);
-            if (!parseExpression(text, ctx, expr)) {
+            if (!parseTopLevelItem(text, ctx, expr)) {
                 return false;
             }
 
@@ -820,7 +867,7 @@
             if (text[argsStartPos] !== ")") {
                 ctx.pos = argsStartPos;
 
-                if (!parseDelimitedList(text, ctx, args, parseExpression, 
+                if (!parseDelimitedList(text, ctx, args, parseTopLevelItem, 
                     (t, pos) => hasText(text, pos, ","),
                     (t, pos) => hasText(text, pos, ")"),
                 )) {
@@ -846,18 +893,20 @@
             }
 
             ctx.pos = start;
-            if (parseExpressionGroup(text, ctx, lines)) return true;
+            if (parseGroup(text, ctx, lines)) return true;
 
             ctx.pos = start;
             if (parseUnaryOp(text, ctx, lines)) return true;
 
-            // important that this is before parseVariable, the function name will be confused for a variable otherwise
             ctx.pos = start;
             if (parseFunctionCall(text, ctx, lines)) return true;
-
+            
+            // important that this is after parseFunctionCall and what have you, the function name will be confused for a variable otherwise
             ctx.pos = start;
             if (parseVariable(text, ctx, lines)) return true;
 
+
+            // primitives
             ctx.pos = start;
             if (parseNumber(text, ctx, lines)) return true;
 
@@ -873,8 +922,56 @@
         }
 
         function parseExpression(text, ctx, lines) {
-            return parseChain(text, ctx, lines, T_EXPR, parseTerm, parseOpExpr);
+            return parseChain(text, ctx, lines, T_EXPR, parseTerm, parseOpExpr)
         }
+
+        function parseTopLevelItem(text, ctx, lines) {
+            return parseTernary(text, ctx, lines);
+        }
+
+        
+        function parseTernary(text, ctx, lines) {
+            const expr = [];
+            if (!parseExpression(text, ctx, expr)) return false;
+
+            const ternaryStart = advanceWhileWhitespace(text, ctx.pos);
+            ctx.pos = ternaryStart;
+            if (text[ctx.pos] !== "?") {
+                // we only got an expression, that is fine
+                lines.push(expr[0]);
+                return true;
+            }
+
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos + 1)
+
+            if (!parseExpression(text, ctx, expr)) return false;
+
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos)
+            if (text[ctx.pos] !== ":") {
+                // we only got one branch of the ternary, that isn't enough
+                return false;
+            }
+
+            // the next part can also be a ternary, i.e
+            // x := y < 0 ? 2 : y > 3 ? 3 : 0
+
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos + 1);
+            if (!parseTernary(text, ctx, expr)) {
+                // we weren't able to parse the second branch of the ternary
+                return false;
+            }
+
+            lines.push({
+                t: T_TERNARY,
+                start: ternaryStart,
+                end: ctx.pos,
+                conditional: expr[0],
+                ifTrue: expr[1],
+                else: expr[2]
+            })
+            return true;
+        }
+
 
         function parseAssignment(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
@@ -883,7 +980,7 @@
             }
 
             const expr = [];
-            if (!parseExpression(text, ctx, expr)) return false;
+            if (!parseTopLevelItem(text, ctx, expr)) return false;
 
             const assignOpPos = advanceWhileWhitespace(text, ctx.pos);
 
@@ -898,7 +995,7 @@
                 return true;
             }
 
-            if (!parseExpression(text, ctx, expr)) return false;
+            if (!parseTopLevelItem(text, ctx, expr)) return false;
 
             lines.push({
                 t: T_ASSIGNMENT,
@@ -995,20 +1092,26 @@
 
             e.preventDefault();
 
-            const sel = document.getSelection();
-            const range = sel.getRangeAt(0);
+            var start = input.selectionStart;
+            var end = input.selectionEnd;
 
-            const tabNodeValue = '\u0009' // with 4 spaces: Array(4).join('\u00a0')
-            const tabNode = document.createTextNode(tabNodeValue);
+            // set textarea value to: text before caret + tab + text after caret
+            input.value = input.value.substring(0, start) +
+            "\t" + input.value.substring(end);
 
-            range.insertNode(tabNode);
-            range.setStartAfter(tabNode);
-            range.setEndAfter(tabNode);
+            // put caret at right position again
+            input.selectionStart =
+            input.selectionEnd = start + 1;
+
+            onInputChange();
         })
 
-        input.addEventListener("input", () => {
+
+        const onInputChange = () => {
             rerender();
-        });
+        };
+
+        input.addEventListener("input", onInputChange);
 
         showAstCheckbox.addEventListener("change", () => {
             rerender();
@@ -1019,9 +1122,9 @@
         });
 
         function rerender() {
-            // line numbers. The final newline will instanty get overwritten, and not count
+            // line numbers.
             document.getElementById("line-numbers").innerText = 
-                [...Array(input.innerText.substring(0, input.innerText.length - 1).split("\n").length).keys()]
+                [...Array(input.value.split("\n").length).keys()]
                 .join("\n");
 
             // debug outputs
@@ -1040,7 +1143,7 @@
 
             // compile and interpret code
 
-            const text = input.innerText;
+            const text = input.value;
             const ast = parseProgram(text);
             const result = evaluateProgram(ast, text);
 
@@ -1093,7 +1196,7 @@
             showResultOutput.innerText = JSON.stringify(result, null, 4);
         }
 
-        input.innerText = "x := 3;\nx";
+        input.value = "0 ? 100 : 2^2";
         rerender();
 
         // ---- add testcases,
@@ -1155,7 +1258,7 @@ y := 3;
 
         testcaseContainer.querySelectorAll(".testcase-button").forEach((button) => {
             button.addEventListener("click", (e) => {
-                input.innerText = testcases[parseInt(button.getAttribute("data-testcase-id"))].input;
+                input.value = testcases[parseInt(button.getAttribute("data-testcase-id"))].input;
                 rerender();
             });
         });

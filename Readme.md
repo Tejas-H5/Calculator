@@ -12,13 +12,14 @@ I find it much faster to iterate on javascript + HTML than I do with anything el
     - yeah I forgot to add this the first time around
 - Builtin functions
     - `sin cos tan ceil floor .....`
-- Loops, conditionals
+- variables
+- ternary operator like condition ? x : y
 
 ### What do I want to add next?
 
-- Custom functions
-- loops, conditionals
-- Vectors, matrices
+- tensors like `[]1200x720x...`
+    - need a way to index into the tensor, like [0][0][0];
+- functions
 
 - Some way to draw things
 - A C++ port ?
