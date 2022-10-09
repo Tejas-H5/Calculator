@@ -21,7 +21,7 @@
             overflow: hidden;
             outline: none;
 
-            margin:0px;
+            margin: 0px;
 
             -webkit-box-shadow: none;
             -moz-box-shadow: none;
@@ -44,10 +44,9 @@
             line-height: 1.2rem;
             color: #aaaaaa;
             background: #000000;
-            outline:none;
+            outline: none;
             border-right: 1px solid #aaaaaa;
         }
-
 
         .code div:before {
             content: "|";
@@ -82,20 +81,28 @@
                 will it be complete, but I will try to add some cool features. I don't intend to spend any
                 more than around 4 days on this site. -->
                 Type something into the box below. Or, click on some of the buttons in the table for examples.
+                This is currently more of a tech demo than a polished and working product, I am currently at
+                the stage where I am sketching out some ideas and seeing how viable this idea is before
+                actually working on it seriously with efficient algorithms, or in a different language like
+                C++ or Rust.
             </div>
         </div>
-        <div >
+        <div>
             <!-- <div style="display: flex; flex-direction: row;">
                 <div id="output" style="padding: 5px; white-space: pre; flex: 1; text-align:right;"></div>
                 <div id="input" contenteditable="plaintext-only" style="padding: 5px; white-space: pre; min-height: 60px; flex: 1;"></div>
             </div> -->
-            <div style="display: flex; flex-direction: row;">
-                <div id="line-numbers" style="padding: 5px; white-space: pre;"></div>
-                <textarea id="input" contenteditable="plaintext-only" style="padding: 5px; white-space: pre; min-height: 60px; flex: 1;"></textarea>
+            <div style="display: flex; flex-direction: row">
+                <div id="line-numbers" style="padding: 5px; white-space: pre"></div>
+                <textarea
+                    id="input"
+                    contenteditable="plaintext-only"
+                    style="padding: 5px; white-space: pre; min-height: 60px; flex: 1"
+                ></textarea>
             </div>
-            <div id="output" style="padding: 5px; white-space: pre; "></div>
+            <div id="output" style="padding: 5px; white-space: pre"></div>
 
-            <div class="not-zen" style="margin-top:50px; padding:10px;">
+            <div class="not-zen" style="margin-top: 50px; padding: 10px">
                 <button id="zen-mode" style="width: unset">Remove clutter</button>
             </div>
         </div>
@@ -125,8 +132,9 @@
         // This is before the parsing code, because the parser depends on some of the structures and stuff defined here.
 
         const VT_NUMBER = debug ? "VT_NUMBER" : 0;
-        const VT_ERROR = debug ? "VT_ERROR" : 1;
-        const VT_NULL = debug ? "VT_NULL" : 2;
+        const VT_TENSOR = debug ? "VT_TENSOR" : 1;
+        const VT_ERROR = debug ? "VT_ERROR" : 2;
+        const VT_NULL = debug ? "VT_NULL" : 3;
 
         function makeErr(ctx, info) {
             const err = {
@@ -143,6 +151,8 @@
                     return "NUMBER";
                 case VT_ERROR:
                     return "ERROR";
+                case VT_TENSOR:
+                    return "TENSOR";
             }
             return "unknown type " + vt;
         }
@@ -193,6 +203,11 @@
             [VT_NUMBER]: {
                 [VT_NUMBER]: {
                     "+": (a, b) => ({ vt: a.vt, val: a.val + b.val }),
+                    "<": (a, b) => ({ vt: a.vt, val: a.val < b.val ? 1.0 : 0.0 }),
+                    ">": (a, b) => ({ vt: a.vt, val: a.val > b.val ? 1.0 : 0.0 }),
+                    "<=": (a, b) => ({ vt: a.vt, val: a.val <= b.val ? 1.0 : 0.0 }),
+                    ">=": (a, b) => ({ vt: a.vt, val: a.val >= b.val ? 1.0 : 0.0 }),
+                    "==": (a, b) => ({ vt: a.vt, val: Math.abs(a.val - b.bal) > 0.0000000001 ? 1.0 : 0.0 }),
                     "-": (a, b) => ({ vt: a.vt, val: a.val - b.val }),
                     "*": (a, b) => ({ vt: a.vt, val: a.val * b.val }),
                     "/": (a, b) => ({ vt: a.vt, val: a.val / b.val }),
@@ -202,9 +217,9 @@
             }
         };
 
-        function applyOperator(ctx, val, val2, op) {
-            const t1 = val.vt;
-            const t2 = val2.vt;
+        function applyOperator(ctx, lhs, rhs, op) {
+            const t1 = lhs.vt;
+            const t2 = rhs.vt;
 
             let binOp = null,
                 binOpL1 = null,
@@ -226,7 +241,7 @@
                 );
             }
 
-            return binOp(val, val2);
+            return binOp(lhs, rhs);
         }
 
         function evaluateChain(ctx, x) {
@@ -421,7 +436,7 @@
 
         function evaluateAssignment(ctx, x) {
             if (x.lhs.t !== T_IDENT) {
-                return makeErr(ctx, `'${ctx.text.substring(x.start, x.end)}' - invalid assignment`)
+                return makeErr(ctx, `'${ctx.text.substring(x.start, x.end)}' - invalid assignment`);
             }
 
             let ident = x.lhs.text;
@@ -452,14 +467,59 @@
         function evaluateTernary(ctx, x) {
             const condition = evaluateExpression(ctx, x.conditional);
             if (condition.vt !== VT_NUMBER) {
-                return makeErr(ctx, `condition needs to be a number, anything less than 0.5 is false, anything >= 0.5 is true`);
+                return makeErr(
+                    ctx,
+                    `condition needs to be a number, anything less than 0.5 is false, anything >= 0.5 is true`
+                );
             }
 
             if (condition.val >= 0.5) {
                 return evaluateExpression(ctx, x.ifTrue);
             }
-            
+
             return evaluateExpression(ctx, x.else);
+        }
+
+        function evaluateTensor(ctx, x) {
+            const depthFirstEvalTensor = (x) => {
+                if (x.t !== T_TENSOR) {
+                    let val = evaluateExpression(ctx, x);
+                    if (val.vt === VT_NUMBER || val.vt === VT_TENSOR) {
+                        return val;
+                    }
+                    
+                    return makeErr(ctx, `bottom level item ${ctx.text.substring(x.start, x.end)} in tensor not of correct type - ${vtToString(val.vt)}`);
+                }
+
+                const tensor = {
+                    vt: VT_TENSOR,
+                    rows: [],
+                }
+
+                let expectedRowLength = 0;
+
+                for (let i = 0; i < x.rows.length; i++) {
+                    let val = depthFirstEvalTensor(x.rows[i]);
+                    if (val.vt === VT_ERROR) {
+                        return val;
+                    } if (val.vt === VT_TENSOR) {
+                        if (expectedRowLength === 0) {
+                            expectedRowLength = val.rows.length;
+                        } else if (expectedRowLength !== val.rows.length) {
+                            return makeErr(ctx, `one of the elements of the tensor was the wrong size: ${ctx.text.substring(x.rows[i].start, x.rows[i].end)}`);
+                        }
+                    } 
+
+                    tensor.rows.push(val);
+                }
+
+                return tensor;
+            };
+
+
+            const tensor = depthFirstEvalTensor(x);
+
+            return tensor;
         }
 
         function evaluateExpression(ctx, x) {
@@ -470,7 +530,7 @@
             const type = x.t;
             let value;
 
-            console.log(type)
+            console.log(type);
 
             switch (type) {
                 case T_NUMBER:
@@ -495,6 +555,9 @@
                     break;
                 case T_TERNARY:
                     value = evaluateTernary(ctx, x);
+                    break;
+                case T_TENSOR:
+                    value = evaluateTensor(ctx, x);
                     break;
                 default:
                     value = makeErr(ctx, "Unknown ast node type");
@@ -528,6 +591,38 @@
             return ctx;
         }
 
+        // not a particularly good visualisation. TODO: improve
+        function tensorToString(t) {
+            if (t.vt !== VT_TENSOR) {
+                return valueToString(t);
+            }
+
+            const rows = [];
+            for(let i = 0; i < t.rows.length; i++) {
+                rows.push(tensorToString(t.rows[i]));
+            }
+
+
+            let joinStr = t.rows[0]?.vt === VT_TENSOR ? ",\n" : ", ";
+            return "[" + rows.join(joinStr) + "]";
+        }
+
+        function valueToString(v) {
+            switch (v.vt) {
+                case VT_TENSOR:
+                    return "\n\t" + tensorToString(v).replace("\n", "\n\t");
+                default:
+                    return `${v.val}`;
+            }
+        }
+
+        function thingToString(v) {
+            let type = vtToString(v.vt);
+            let str = valueToString(v);
+
+            return `[${type}]: ${str}`;
+        }
+
         // ---- parser
 
         const T_EXPR = debug ? "T_EXPR" : 0;
@@ -542,6 +637,7 @@
         const T_OP_EXPONENT = debug ? "T_OP_EXPONENT" : 9;
         const T_ASSIGNMENT = debug ? "T_ASSIGNMENT" : 10;
         const T_TERNARY = debug ? "T_TERNARY" : 11;
+        const T_TENSOR = debug ? "T_TENSOR" : 12;
 
         // Thankyou Trevor https://stackoverflow.com/questions/1496826/check-if-a-single-character-is-a-whitespace
         function isWhitespace(c) {
@@ -589,15 +685,18 @@
         function advanceWhileWhitespace(text, pos) {
             if (debug) {
                 if (typeof text !== "string") {
-                    throw new Error("you might be calling advanceWhiteSpace wrong");
+                    throw new Error("you might be calling advanceWhileWhitespace wrong");
                 }
             }
 
-            while (pos < text.length && (isWhitespace(text[pos]) || text[pos] === "/")) {
+            while (
+                pos < text.length &&
+                (isWhitespace(text[pos]) || (text[pos] === "/" && text[pos + 1] === "/"))
+            ) {
                 // single line comment, ignore all text on the same line after //.
                 // TODO: figure out how we can actually store these comments and use them
                 // in a meaningful way
-                if (text[pos] === "/" && text[pos + 1] === "/") {
+                if (text[pos] === "/") {
                     pos += 2;
                     while (pos < text.length && text[pos] !== "\n") {
                         pos++;
@@ -643,7 +742,7 @@
 
         // operators with the same precedence as addition
         function parseOpExpr(text, ctx, ops) {
-            return parseOneOf(text, ctx, ops, ["+", "-"], T_OP_EXPR);
+            return parseOneOf(text, ctx, ops, ["+", "-", ">", "<", ">=", "<=", "=="], T_OP_EXPR);
         }
 
         // one of *, /, %
@@ -816,8 +915,8 @@
             return true;
         }
 
-        
         // wrongly assumes there will always be at least one element in this list
+        // also, hasTerminator only works when the terminator is length=1. we need to write it properly next time, or later
         function parseDelimitedList(text, ctx, lines, exprParser, hasDelimiter, hasTerminator) {
             const start = advanceWhileWhitespace(text, ctx.pos);
             if (start === text.length) {
@@ -825,19 +924,31 @@
             }
 
             ctx.pos = start;
+            let terminated = false;
             while (exprParser(text, ctx, lines)) {
                 const nextStartPos = advanceWhileWhitespace(text, ctx.pos);
-                if (hasDelimiter(text, nextStartPos)) { //text[nextStartPos] === delimiter
+                if (hasDelimiter(text, nextStartPos)) {
+                    //text[nextStartPos] === delimiter
                     ctx.pos = nextStartPos + 1;
                     continue;
                 }
 
-                if (hasTerminator(text, nextStartPos)) { // text[nextStartPos] === terminator
+                if (hasTerminator(text, nextStartPos)) {
+                    // text[nextStartPos] === terminator
                     ctx.pos = nextStartPos + 1;
+                    terminated = true;
                     break;
                 }
 
                 return false;
+            }
+
+            if (!terminated) {
+                // allow for things like [1,2,] (trailing comma)
+                ctx.pos = advanceWhileWhitespace(text, ctx.pos);
+                if (hasTerminator(text, ctx.pos)) {
+                    ctx.pos += 1;
+                }
             }
 
             return true;
@@ -864,13 +975,20 @@
 
             const argsStartPos = advanceWhileWhitespace(text, ctx.pos);
 
-            if (text[argsStartPos] !== ")") {
-                ctx.pos = argsStartPos;
-
-                if (!parseDelimitedList(text, ctx, args, parseTopLevelItem, 
-                    (t, pos) => hasText(text, pos, ","),
-                    (t, pos) => hasText(text, pos, ")"),
-                )) {
+            ctx.pos = argsStartPos;
+            if (text[argsStartPos] === ")") {
+                ctx.pos += 1;
+            } else {
+                if (
+                    !parseDelimitedList(
+                        text,
+                        ctx,
+                        args,
+                        parseTopLevelItem,
+                        (t, pos) => hasText(t, pos, ","),
+                        (t, pos) => hasText(t, pos, ")")
+                    )
+                ) {
                     return false;
                 }
             }
@@ -883,6 +1001,57 @@
                 args: args
             });
 
+            return true;
+        }
+
+        // it assumes the starting pos already has a digit. don't call it otherwise
+        function parseIntInline(text, ctx) {
+            const start = ctx.pos;
+            while (ctx.pos < text.length && isDigit(text[ctx.pos])) {
+                ctx.pos++;
+            }
+
+            return parseInt(text.substring(start, ctx.pos));
+        }
+
+        // surprisingly complicated
+        function parseTensor(text, ctx, lines) {
+            const start = advanceWhileWhitespace(text, ctx.pos);
+            if (start === text.length) {
+                return false;
+            }
+
+            const shape = [];
+
+            if (text[start] !== "[") {
+                return false;
+            }
+
+            ctx.pos = advanceWhileWhitespace(text, start + 1);
+
+            const rows = [];
+            // probably more optimal to only be parsing tensors or numbers here.
+            if (
+                !parseDelimitedList(
+                    text,
+                    ctx,
+                    rows,
+                    parseTopLevelItem,
+                    (t, pos) => hasText(t, pos, ","),
+                    (t, pos) => hasText(t, pos, "]")
+                )
+            ) {
+                return false;
+            }
+
+            // we need to figure out the shape, and evaluate the inline expressions later in the evaluation step
+            lines.push({
+                t: T_TENSOR,
+                start: start,
+                end: ctx.pos,
+                rows: rows,
+                evaluated: false
+            });
             return true;
         }
 
@@ -900,15 +1069,18 @@
 
             ctx.pos = start;
             if (parseFunctionCall(text, ctx, lines)) return true;
-            
+
             // important that this is after parseFunctionCall and what have you, the function name will be confused for a variable otherwise
             ctx.pos = start;
             if (parseVariable(text, ctx, lines)) return true;
 
-
             // primitives
+
             ctx.pos = start;
             if (parseNumber(text, ctx, lines)) return true;
+
+            ctx.pos = start;
+            if (parseTensor(text, ctx, lines)) return true;
 
             return false;
         }
@@ -922,14 +1094,13 @@
         }
 
         function parseExpression(text, ctx, lines) {
-            return parseChain(text, ctx, lines, T_EXPR, parseTerm, parseOpExpr)
+            return parseChain(text, ctx, lines, T_EXPR, parseTerm, parseOpExpr);
         }
 
         function parseTopLevelItem(text, ctx, lines) {
             return parseTernary(text, ctx, lines);
         }
 
-        
         function parseTernary(text, ctx, lines) {
             const expr = [];
             if (!parseExpression(text, ctx, expr)) return false;
@@ -942,11 +1113,11 @@
                 return true;
             }
 
-            ctx.pos = advanceWhileWhitespace(text, ctx.pos + 1)
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos + 1);
 
             if (!parseExpression(text, ctx, expr)) return false;
 
-            ctx.pos = advanceWhileWhitespace(text, ctx.pos)
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos);
             if (text[ctx.pos] !== ":") {
                 // we only got one branch of the ternary, that isn't enough
                 return false;
@@ -968,10 +1139,9 @@
                 conditional: expr[0],
                 ifTrue: expr[1],
                 else: expr[2]
-            })
+            });
             return true;
         }
-
 
         function parseAssignment(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
@@ -1016,7 +1186,7 @@
 
                 const lastAdded = list[list.length - 1];
                 lastAdded.show = !endsWithSemicolon;
-                lastAdded.lineNumber = text.substring(0, lastAdded.start).split("\n").length - 1
+                lastAdded.lineNumber = text.substring(0, lastAdded.start).split("\n").length - 1;
 
                 if (endsWithSemicolon) {
                     ctx.pos++;
@@ -1068,6 +1238,22 @@
                     delete node.end;
                 }
 
+                const limit = 10;
+                if (
+                    typeof node.length === "number" &&
+                    node.length > limit &&
+                    node.push !== undefined &&
+                    node.splice !== undefined
+                ) {
+                    let originalLength = node.length;
+                    node.splice(limit, node.length - limit);
+                    node.push(
+                        "and " +
+                            (originalLength - limit) +
+                            " more items that have been hidden for performance reasons"
+                    );
+                }
+
                 for (const k of Object.keys(node)) {
                     dfs(node[k]);
                 }
@@ -1076,6 +1262,8 @@
             dfs(ast);
             return ast;
         }
+
+        
 
         // ---- actual website code
 
@@ -1087,8 +1275,7 @@
 
         // HTML doesn't like tabs, we need this additional code to be able to insert tabs.
         input.addEventListener("keydown", (e) => {
-            if (e.keyCode !== 9) 
-                return;
+            if (e.keyCode !== 9) return;
 
             e.preventDefault();
 
@@ -1096,16 +1283,13 @@
             var end = input.selectionEnd;
 
             // set textarea value to: text before caret + tab + text after caret
-            input.value = input.value.substring(0, start) +
-            "\t" + input.value.substring(end);
+            input.value = input.value.substring(0, start) + "\t" + input.value.substring(end);
 
             // put caret at right position again
-            input.selectionStart =
-            input.selectionEnd = start + 1;
+            input.selectionStart = input.selectionEnd = start + 1;
 
             onInputChange();
-        })
-
+        });
 
         const onInputChange = () => {
             rerender();
@@ -1123,9 +1307,9 @@
 
         function rerender() {
             // line numbers.
-            document.getElementById("line-numbers").innerText = 
-                [...Array(input.value.split("\n").length).keys()]
-                .join("\n");
+            document.getElementById("line-numbers").innerText = [
+                ...Array(input.value.split("\n").length).keys()
+            ].join("\n");
 
             // debug outputs
 
@@ -1157,7 +1341,7 @@
 
             let resultsTextOutput = [];
 
-            // // code to align results with the line the expression appeared on. 
+            // // code to align results with the line the expression appeared on.
             // if (result.results.length > 0) {
             //     let currentResultIndex = 0;
             //     for(let ln = 0; ln <= result.results[result.results.length - 1].lineNumber; ln++) {
@@ -1172,8 +1356,9 @@
             //         }
             //     }
             // }
-            resultsTextOutput = result.results.map(v => v.show ? `[${vtToString(v.vt)}]: ${v.val}` : undefined)
-                .filter(v => !!v)
+            resultsTextOutput = result.results
+                .map((v) => (v.show ? thingToString(v) : undefined))
+                .filter((v) => !!v);
             resultsTextOutput = resultsTextOutput.join("\n");
 
             const errorsTextOutput =
@@ -1182,7 +1367,7 @@
                     : "<pre>All errors:</pre>" +
                       result.errors
                           .map((v) => {
-                              return `<pre class="error">[${vtToString(v.vt)}]: ${v.val}</pre>`;
+                              return `<pre class="error">${thingToString(v)}</pre>`;
                           })
                           .join("");
 
@@ -1196,7 +1381,7 @@
             showResultOutput.innerText = JSON.stringify(result, null, 4);
         }
 
-        input.value = "0 ? 100 : 2^2";
+        input.value = "[[1, 2, 3], [1, 2, 3]]";
         rerender();
 
         // ---- add testcases,
@@ -1239,9 +1424,14 @@ y := 3;
                 expected: "errors"
             },
             {
-                name: "comments",
+                name: "line comments",
                 input: "x := // 324234 * sin(x)\n3; x",
                 expected: "3"
+            },
+            {
+                name: "ternary",
+                input: "0 ? 100 : 2^2",
+                expected: "4"
             }
         ];
 
@@ -1263,23 +1453,22 @@ y := 3;
             });
         });
 
-
         // ---- zen mode
 
         const zenMode = document.getElementById("zen-mode");
         zenMode.addEventListener("click", () => {
             document.querySelectorAll(".not-zen").forEach((el) => {
                 el.setAttribute("hidden", true);
-            })
-        })
+            });
+        });
 
         document.addEventListener("keydown", (e) => {
             if (e.key === "Escape") {
                 document.querySelectorAll(".not-zen").forEach((el) => {
                     el.removeAttribute("hidden", true);
-                })  
+                });
             }
-        })
+        });
 
         // ---- end
     </script>
