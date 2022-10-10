@@ -123,8 +123,6 @@
         </div>
     </body>
     <script>
-        // --- my code
-
         const debug = true;
         // const debug = false;
 
@@ -233,6 +231,10 @@
             }
 
             if (!binOp) {
+                // find the largest common shape, and try to multiply component-wise
+                if (t1.vt === VT_TENSOR) {
+                }
+
                 return makeErr(
                     ctx,
                     `the operator '${op.text}' doesn't have a mapping from ${vtToString(t1)} -> ${vtToString(
@@ -278,6 +280,7 @@
         }
 
         // imagine building an interpreted language in an interpreted language
+        // also we need a way to represent infinite args. our tensor function can actually take in infinite number args
         const builtinFunctionsMap = {
             abs: {
                 args: [{ vt: VT_NUMBER }],
@@ -402,6 +405,10 @@
             trunc: {
                 args: [{ vt: VT_NUMBER }],
                 fn: (...args) => ({ vt: args[0].vt, val: Math.trunc(...args.map((x) => x.val)) })
+            },
+            T: {
+                args: [{ vt: VT_NUMBER}],
+                fn: (...args) => ({ vt: VT_TENSOR, data: Array(args.map(x => x.val).reduce((prev, next) => prev * next, 1)).fill(0), shape: args.map(x => x.val) })  // no error checks? TODO: add. later, of
             }
         };
         const builtinFunctions = Object.keys(builtinFunctionsMap);
@@ -435,7 +442,7 @@
         }
 
         function evaluateAssignment(ctx, x) {
-            if (x.lhs.t !== T_IDENT) {
+            if (x.lhs.t !== T_IDENT && x.lhs.t !== T_TENSOR) {
                 return makeErr(ctx, `'${ctx.text.substring(x.start, x.end)}' - invalid assignment`);
             }
 
@@ -444,12 +451,17 @@
                 return makeErr(ctx, `identifier was blank`);
             }
 
+            if (builtinFunctions.includes(ident)) {
+                // compilers need more of this I think. what could possibly go wrong?
+                return makeErr(ctx, Math.random() < 0.05 ? `NOO!!! you cant just redeclare functions !!!` : `a builtin function already exists with this name`) 
+            }
+
             const rhs = evaluateExpression(ctx, x.rhs);
             const existingVar = evaluateVariable(ctx, x.lhs, false);
 
             if (x.isDeclaration) {
                 if (existingVar !== null) {
-                    return makeErr(ctx, `variable ${ident} already defined, with value: ${existingVar.val}`);
+                    return makeErr(ctx, Math.random() < 0.05 ? `NOOOO!! you cant just redefine ${ident} to be ${rhs.val}` : `variable ${ident} already defined, with value: ${existingVar.val}`);
                 }
             } else {
                 if (existingVar === null) {
@@ -480,6 +492,17 @@
             return evaluateExpression(ctx, x.else);
         }
 
+        // takes in two shapes, not two tensors
+        function areSameShape(s1, s2) {
+            if (s1.length !== s2.length) return false;
+
+            for (const i in s1) {
+                if (s1[i] !== s2[i]) return false;
+            }
+
+            return true;
+        }
+
         function evaluateTensor(ctx, x) {
             const depthFirstEvalTensor = (x) => {
                 if (x.t !== T_TENSOR) {
@@ -487,39 +510,88 @@
                     if (val.vt === VT_NUMBER || val.vt === VT_TENSOR) {
                         return val;
                     }
-                    
-                    return makeErr(ctx, `bottom level item ${ctx.text.substring(x.start, x.end)} in tensor not of correct type - ${vtToString(val.vt)}`);
+
+                    return makeErr(
+                        ctx,
+                        `bottom level item ${ctx.text.substring(
+                            x.start,
+                            x.end
+                        )} in tensor not of correct type - ${vtToString(val.vt)}`
+                    );
                 }
 
                 const tensor = {
                     vt: VT_TENSOR,
-                    rows: [],
-                }
+                    data: [],
+                    shape: []
+                };
 
-                let expectedRowLength = 0;
-
+                let expectedShape = null;
                 for (let i = 0; i < x.rows.length; i++) {
-                    let val = depthFirstEvalTensor(x.rows[i]);
-                    if (val.vt === VT_ERROR) {
-                        return val;
-                    } if (val.vt === VT_TENSOR) {
-                        if (expectedRowLength === 0) {
-                            expectedRowLength = val.rows.length;
-                        } else if (expectedRowLength !== val.rows.length) {
-                            return makeErr(ctx, `one of the elements of the tensor was the wrong size: ${ctx.text.substring(x.rows[i].start, x.rows[i].end)}`);
-                        }
-                    } 
+                    let row = depthFirstEvalTensor(x.rows[i]);
+                    if (row.vt === VT_ERROR) {
+                        return row;
+                    }
 
-                    tensor.rows.push(val);
+                    if (row.vt === VT_TENSOR) {
+                        if (expectedShape === null) {
+                            expectedShape = row.shape;
+                        } else if (!areSameShape(expectedShape, row.shape)) {
+                            return makeErr(
+                                ctx,
+                                `one of the elements of the tensor was the wrong size: ${ctx.text.substring(
+                                    x.rows[i].start,
+                                    x.rows[i].end
+                                )}`
+                            );
+                        }
+
+                        tensor.data.push(...row.data);
+                    } else if (row.vt === VT_NUMBER) {
+                        expectedShape = [];
+                        tensor.data.push(row.val);
+                    }
                 }
+
+                tensor.shape = [x.rows.length, ...expectedShape];
 
                 return tensor;
             };
 
-
             const tensor = depthFirstEvalTensor(x);
 
             return tensor;
+        }
+
+        function evaluateExprIndexation(ctx, x) {
+            const expr = evaluateExpression(ctx, x.expr)
+            // eventually, indexes themselves can be tensors
+            const indexes = x.indexes.map(x => evaluateExpression(ctx, x))
+
+            if (expr.vt !== VT_TENSOR) {
+                return makeErr(ctx, `the type ${vtToString(expr.vt)} cannot be indexed`);
+            }
+
+            let cumulativeSizes = Array(expr.shape.length);
+            cumulativeSizes[cumulativeSizes.length - 1] = expr.shape[cumulativeSizes.length - 1];
+            for(let i = expr.shape.length - 2; i >= 0; i--) {
+                cumulativeSizes[i] = expr.shape[i] * expr.shape[i+1];
+            }
+
+            let start = 0;
+            for(let i = 0; i < x.indexes.length; i++) {
+                start += (cumulativeSizes[i + 1] || 1) * indexes[i].val;
+            }
+
+            if (indexes.length === cumulativeSizes.length) {
+                return makeNumber(expr.data[start]);
+            }
+
+            return {
+                vt: VT_TENSOR,
+                shape: expr.shape.slice(indexes.length),
+                data: expr.data.slice(start, start + cumulativeSizes[indexes.length])
+            };
         }
 
         function evaluateExpression(ctx, x) {
@@ -530,8 +602,6 @@
             const type = x.t;
             let value;
 
-            console.log(type);
-
             switch (type) {
                 case T_NUMBER:
                     value = evaluateNumber(x);
@@ -539,6 +609,9 @@
                 case T_BUILTIN_CONSTANT:
                 case T_IDENT:
                     value = evaluateVariable(ctx, x);
+                    break;
+                case T_EXPR_INDEXATION:
+                    value = evaluateExprIndexation(ctx, x);
                     break;
                 case T_EXPR:
                 case T_TERM:
@@ -597,14 +670,26 @@
                 return valueToString(t);
             }
 
-            const rows = [];
-            for(let i = 0; i < t.rows.length; i++) {
-                rows.push(tensorToString(t.rows[i]));
+            let counter = 0;
+            const dfs = (level) => {
+                if (level === t.shape.length) {
+                    let val = t.data[counter];
+                    counter ++;
+                    return val;
+                }
+                
+                let stringBuilder = [];
+                for (let i = 0; i < t.shape[level]; i++) {
+                    stringBuilder.push(dfs(level + 1));
+                }
+
+                const joinStr = level === t.shape.length - 1 ? ", " : ", \n";
+                return "[" + stringBuilder.join(joinStr) + "]";
             }
 
-
-            let joinStr = t.rows[0]?.vt === VT_TENSOR ? ",\n" : ", ";
-            return "[" + rows.join(joinStr) + "]";
+            let dataStr = dfs(0);
+            
+            return "shape: " + t.shape.join("x") + ", data: \n" + dataStr.replace(/\n/g, "\n\t");
         }
 
         function valueToString(v) {
@@ -638,6 +723,7 @@
         const T_ASSIGNMENT = debug ? "T_ASSIGNMENT" : 10;
         const T_TERNARY = debug ? "T_TERNARY" : 11;
         const T_TENSOR = debug ? "T_TENSOR" : 12;
+        const T_EXPR_INDEXATION = debug ? "T_EXPR_INDEXATION" : 13;
 
         // Thankyou Trevor https://stackoverflow.com/questions/1496826/check-if-a-single-character-is-a-whitespace
         function isWhitespace(c) {
@@ -758,7 +844,7 @@
         // operators with the same precedence as multiplication
         function parseNumber(text, ctx, terms) {
             const start = advanceWhileWhitespace(text, ctx.pos);
-            if (start === text.length) {
+            if (start >= text.length) {
                 return false;
             }
 
@@ -790,7 +876,7 @@
         // the parsers for term and operator can be specified as functions
         function parseChain(text, ctx, lines, type, termParser, opParser) {
             let start = advanceWhileWhitespace(text, ctx.pos);
-            if (start === text.length) {
+            if (start >= text.length) {
                 return false;
             }
 
@@ -835,7 +921,7 @@
 
         function parseGroup(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
-            if (start === text.length) {
+            if (start >= text.length) {
                 return false;
             }
 
@@ -854,13 +940,17 @@
             return false;
         }
 
+        // also parses a tensor indexing op like x[1][1][1]
         function parseVariable(text, ctx, lines) {
-            return parseIdentifier(text, ctx, lines);
+            const start = ctx.pos;
+
+            if (!parseIdentifier(text, ctx, lines)) return false;
+            return true;
         }
 
         function parseUnaryOp(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
-            if (start === text.length) {
+            if (start >= text.length) {
                 return false;
             }
 
@@ -889,7 +979,7 @@
 
         function parseIdentifier(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
-            if (start === text.length) {
+            if (start >= text.length) {
                 return false;
             }
 
@@ -919,7 +1009,7 @@
         // also, hasTerminator only works when the terminator is length=1. we need to write it properly next time, or later
         function parseDelimitedList(text, ctx, lines, exprParser, hasDelimiter, hasTerminator) {
             const start = advanceWhileWhitespace(text, ctx.pos);
-            if (start === text.length) {
+            if (start >= text.length) {
                 return false;
             }
 
@@ -956,7 +1046,7 @@
 
         function parseFunctionCall(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
-            if (start === text.length) {
+            if (start >= text.length) {
                 return false;
             }
 
@@ -1017,7 +1107,7 @@
         // surprisingly complicated
         function parseTensor(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
-            if (start === text.length) {
+            if (start >= text.length) {
                 return false;
             }
 
@@ -1057,7 +1147,7 @@
 
         function parseThing(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
-            if (start === text.length) {
+            if (start >= text.length) {
                 return false;
             }
 
@@ -1097,8 +1187,42 @@
             return parseChain(text, ctx, lines, T_EXPR, parseTerm, parseOpExpr);
         }
 
+        function parseIndexation(text, ctx, indexes) {
+            if(text[ctx.pos] !== "[") {
+                return false;
+            }
+
+            while (hasText(text, ctx.pos, "[")) {
+                ctx.pos = advanceWhileWhitespace(text, ctx.pos + 1);
+
+                if (!parseTopLevelItem(text, ctx, indexes)) return false;
+
+                ctx.pos = advanceWhileWhitespace(text, ctx.pos);
+                if (!text[ctx.pos] === "]") {
+                    return false;
+                }
+                ctx.pos = advanceWhileWhitespace(text, ctx.pos + 1);
+            }
+
+            return true;
+        }
+
         function parseTopLevelItem(text, ctx, lines) {
-            return parseTernary(text, ctx, lines);
+            const start = ctx.pos;
+            if (!parseTernary(text, ctx, lines)) return false;
+
+            const indexes = [];
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos);
+            if (!parseIndexation(text, ctx, indexes)) return true;
+
+            lines[lines.length - 1] = {
+                t: T_EXPR_INDEXATION,
+                start: start,
+                end: ctx.pos,
+                expr: lines[lines.length - 1],
+                indexes: indexes
+            };
+            return true;
         }
 
         function parseTernary(text, ctx, lines) {
@@ -1145,7 +1269,7 @@
 
         function parseAssignment(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
-            if (start === text.length) {
+            if (start >= text.length) {
                 return false;
             }
 
@@ -1263,8 +1387,6 @@
             return ast;
         }
 
-        
-
         // ---- actual website code
 
         const input = document.getElementById("input");
@@ -1381,7 +1503,10 @@
             showResultOutput.innerText = JSON.stringify(result, null, 4);
         }
 
-        input.value = "[[1, 2, 3], [1, 2, 3]]";
+
+        // ---- set value
+
+        input.value = "[1,2,3][1]";
         rerender();
 
         // ---- add testcases,
@@ -1432,6 +1557,16 @@ y := 3;
                 name: "ternary",
                 input: "0 ? 100 : 2^2",
                 expected: "4"
+            },
+            {
+                name: "inline tensor",
+                input: "[[1, 2, 3], [1, 2, 3]]",
+                expected: "a tensor"
+            },
+            {
+                name: "tensor func",
+                input: "T(10, 10)",
+                expected: "a tensor"
             }
         ];
 

@@ -18,9 +18,18 @@ I find it much faster to iterate on javascript + HTML than I do with anything el
 ### What do I want to add next?
 
 - tensors like `[]1200x720x...`
+    - want to remove numbers in favour of tensors
     - need a way to index into the tensor, like [0][0][0];
-- functions
-    - array programming like in Sverchok blender addon. basically, a node that was like f(x : float) -> float would implicitly be f(x : float[]) -> float[] by applying the function elementwise, and the number of dimensions is infinite.
+
+- array programming like in Sverchok blender addon. basically, a node that was like f(x : float) -> float would implicitly be f(x : float[]) -> float[] by applying the function elementwise, and the number of dimensions is infinite.
+    - If a function expects types (T1, T2, ... , Tn), then we first check if the arguments passed in were correct, and evaluate normally.
+    Else, we see which arguments are of type T1[][]..., and then we go ahead and invoke the function multiple times for every value of T1 in the array, for each argument.
+        - order can be non-deterministic
+
+- user defined functions
+
+
+
 - Some way to draw things
 - quick optimization : store rows as vectors, not individual number objects 
     - or if there was a way to just represent everything as one massive 1d array, that would be nice
