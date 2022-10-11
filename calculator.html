@@ -407,8 +407,12 @@
                 fn: (...args) => ({ vt: args[0].vt, val: Math.trunc(...args.map((x) => x.val)) })
             },
             T: {
-                args: [{ vt: VT_NUMBER}],
-                fn: (...args) => ({ vt: VT_TENSOR, data: Array(args.map(x => x.val).reduce((prev, next) => prev * next, 1)).fill(0), shape: args.map(x => x.val) })  // no error checks? TODO: add. later, of
+                args: [{ vt: VT_NUMBER }],
+                fn: (...args) => ({
+                    vt: VT_TENSOR,
+                    data: Array(args.map((x) => x.val).reduce((prev, next) => prev * next, 1)).fill(0),
+                    shape: args.map((x) => x.val)
+                }) // no error checks? TODO: add. later, of
             }
         };
         const builtinFunctions = Object.keys(builtinFunctionsMap);
@@ -453,7 +457,12 @@
 
             if (builtinFunctions.includes(ident)) {
                 // compilers need more of this I think. what could possibly go wrong?
-                return makeErr(ctx, Math.random() < 0.05 ? `NOO!!! you cant just redeclare functions !!!` : `a builtin function already exists with this name`) 
+                return makeErr(
+                    ctx,
+                    Math.random() < 0.05
+                        ? `NOO!!! you cant just redeclare functions !!!`
+                        : `a builtin function already exists with this name`
+                );
             }
 
             const rhs = evaluateExpression(ctx, x.rhs);
@@ -461,7 +470,12 @@
 
             if (x.isDeclaration) {
                 if (existingVar !== null) {
-                    return makeErr(ctx, Math.random() < 0.05 ? `NOOOO!! you cant just redefine ${ident} to be ${rhs.val}` : `variable ${ident} already defined, with value: ${existingVar.val}`);
+                    return makeErr(
+                        ctx,
+                        Math.random() < 0.05
+                            ? `NOOOO!! you cant just redefine ${ident} to be ${rhs.val}`
+                            : `variable ${ident} already defined, with value: ${existingVar.val}`
+                    );
                 }
             } else {
                 if (existingVar === null) {
@@ -563,34 +577,116 @@
             return tensor;
         }
 
-        function evaluateExprIndexation(ctx, x) {
-            const expr = evaluateExpression(ctx, x.expr)
-            // eventually, indexes themselves can be tensors
-            const indexes = x.indexes.map(x => evaluateExpression(ctx, x))
+        function evaluateIndicesToFlatArray(ctx, x, shape, indexes) {
+            const strides = Array(shape.length);
 
+            const newShape = [];
+
+            // at each level, we should know how big the stride is.
+            // we calculate this with a cumulative sum. at the lowest level, the stride is 1.
+            // if we have a 2x3 matrix, the things would be [6, 3, 1], with 6 being the total number of things in
+            // the entire matrix and hence not very useful
+            strides[strides.length - 1] = 1;
+            for (let i = shape.length - 2; i >= 0; i--) {
+                strides[i] = shape[i + 1] * strides[i + 1];
+            }
+
+            // now, we have some indices that need to become a list of indexes.
+            // if we have [1,2,3][1], then 1 is the index.
+            // if we have [1,2,3][[1, 2]], then we really want 2 indices - 1 and two.
+            // [[1,2,3],[4,5,6]][1][0] -> 3 + 0
+            // [[1,2,3],[4,5,6]][[0, 1]][0] -> [0 + 0, 3 + 0]
+            const flatIndexes = [0];
+            for (let i = 0; i < indexes.length; i++) {
+                const idx = indexes[i];
+                if (idx.vt === VT_NUMBER) {
+                    for (let j = 0; j < flatIndexes.length; j++) {
+                        if (idx.val < 0 || idx.val >= shape[i]) {
+                            return [null, null, makeErr(ctx, `index ${idx.val} in ${ctx.text.substring(x.start, x.end)} was out of bounds`)];
+                        }
+                        
+                        flatIndexes[j] += strides[i] * idx.val;
+                    }
+                    newShape.push(1);
+                } else if (idx.vt === VT_TENSOR) {
+                    // only support for 1d tensors for now. I'm not yet sure how to think about a matrix / tensor indexing into something, but I'm sure it is possible
+                    if (idx.shape.length > 1) {
+                        return [null, null, makeErr(ctx,`only numbers or 1d tensors (aka vectors) can be used as an indexer`)];
+                    }
+
+                    // copy the indices we already have for each index specified
+                    let originalLen = flatIndexes.length;
+                    for (let j = 0; j < idx.data.length - 1; j++) {
+                        flatIndexes.push(...flatIndexes.slice(0, originalLen));
+                    }
+
+                    // yeah I think this is right but I cant be arsed reviewing
+                    for (let j = 0; j < idx.data.length; j++) {
+                        if (idx.data[j] < 0 || idx.data[j] >= shape[i]) {
+                            return [null, null, makeErr(ctx, `index ${idx.data[j]} in ${ctx.text.substring(x.start, x.end)} was out of bounds`)];
+                        }
+
+                        for (let k = 0; k < originalLen; k++) {
+                            flatIndexes[j * originalLen + k] += strides[i] * idx.data[j];
+                        }
+                    }
+                    newShape.push(idx.data.length);
+                } else {
+                    return [null, null, makeErr(ctx, `tf kinda type is this huh: ${vtToString(idx.vt)}`)]
+                }
+            }
+
+            return [flatIndexes, newShape, null];
+        }
+
+        function evaluateIndexation(ctx, x) {
+            const expr = evaluateExpression(ctx, x.expr);
             if (expr.vt !== VT_TENSOR) {
                 return makeErr(ctx, `the type ${vtToString(expr.vt)} cannot be indexed`);
             }
+            const indexes = x.indexes.map((x) => evaluateExpression(ctx, x));
 
-            let cumulativeSizes = Array(expr.shape.length);
-            cumulativeSizes[cumulativeSizes.length - 1] = expr.shape[cumulativeSizes.length - 1];
-            for(let i = expr.shape.length - 2; i >= 0; i--) {
-                cumulativeSizes[i] = expr.shape[i] * expr.shape[i+1];
+            const [flatIndices, newShape, err] = evaluateIndicesToFlatArray(ctx, x, expr.shape, indexes);
+            if (err !== null) {
+                return err;
             }
 
-            let start = 0;
-            for(let i = 0; i < x.indexes.length; i++) {
-                start += (cumulativeSizes[i + 1] || 1) * indexes[i].val;
+            // bounds checking code. TODO: use it or delete it
+            // if (start >= expr.data.length || start < 0) {
+            //     return makeErr(ctx, `index ${start} in ${ctx.text.substring(x.start, x.end)} was out of bounds`)
+            // }
+            if (newShape.length === expr.shape.length) {
+                for(let i = 0; i < flatIndices.length; i++) {
+                    flatIndices[i] = expr.data[flatIndices[i]];
+                }
+    
+                if (flatIndices.length === 1) {
+                    return makeNumber(flatIndices[0]);
+                }
+    
+                return {
+                    vt: VT_TENSOR,
+                    shape: newShape,
+                    data: flatIndices
+                };
             }
 
-            if (indexes.length === cumulativeSizes.length) {
-                return makeNumber(expr.data[start]);
+
+            // note to self: this kind of code is FAR easier to write when in the zone than it is to read,
+            // don't be discouraged if you don't understand a word of it. Kinda like regex actually
+            const remainingShape = expr.shape.slice(newShape.length);
+            const stride = remainingShape.reduce((a, b) => a * b, 1);
+            const largerArray = Array(flatIndices.length * stride);
+            for(let i = 0; i < flatIndices.length; i++) {
+                for(let j = 0; j < stride; j++) {
+                    largerArray[i * stride + j] = expr.data[flatIndices[i] + j];
+                }
             }
 
             return {
                 vt: VT_TENSOR,
-                shape: expr.shape.slice(indexes.length),
-                data: expr.data.slice(start, start + cumulativeSizes[indexes.length])
+                shape: [flatIndices.length, ...remainingShape],
+                data: largerArray
             };
         }
 
@@ -611,7 +707,7 @@
                     value = evaluateVariable(ctx, x);
                     break;
                 case T_EXPR_INDEXATION:
-                    value = evaluateExprIndexation(ctx, x);
+                    value = evaluateIndexation(ctx, x);
                     break;
                 case T_EXPR:
                 case T_TERM:
@@ -674,10 +770,10 @@
             const dfs = (level) => {
                 if (level === t.shape.length) {
                     let val = t.data[counter];
-                    counter ++;
+                    counter++;
                     return val;
                 }
-                
+
                 let stringBuilder = [];
                 for (let i = 0; i < t.shape[level]; i++) {
                     stringBuilder.push(dfs(level + 1));
@@ -685,10 +781,10 @@
 
                 const joinStr = level === t.shape.length - 1 ? ", " : ", \n";
                 return "[" + stringBuilder.join(joinStr) + "]";
-            }
+            };
 
             let dataStr = dfs(0);
-            
+
             return "shape: " + t.shape.join("x") + ", data: \n" + dataStr.replace(/\n/g, "\n\t");
         }
 
@@ -1188,7 +1284,7 @@
         }
 
         function parseIndexation(text, ctx, indexes) {
-            if(text[ctx.pos] !== "[") {
+            if (text[ctx.pos] !== "[") {
                 return false;
             }
 
@@ -1503,15 +1599,24 @@
             showResultOutput.innerText = JSON.stringify(result, null, 4);
         }
 
-
         // ---- set value
 
-        input.value = "[1,2,3][1]";
+        input.value = "[[1,2,3],[4,5,6]][0]";
         rerender();
 
         // ---- add testcases,
 
         const testcases = [
+            {
+                name: "indexing test 2",
+                input: "[[1,2,3],[4,5,6]][0]",
+                output: "[1,2,3]"
+            },
+            {
+                name: "indexing with fewer dimensions should return tensor",
+                input: "[[[1,2,3],[4,5,6]], [[1,2,3],[4,5,6]]][[0, 1]]",
+                output: "[[[1,2,3],[4,5,6]], [[1,2,3],[4,5,6]]][[0, 1]]"
+            },
             {
                 name: "order of operations",
                 input: `1 * 2 + 3 * 2^2`,
