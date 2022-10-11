@@ -80,11 +80,15 @@
                 programming language that I have been thinking about for a while now. This won't be the actual language, nor
                 will it be complete, but I will try to add some cool features. I don't intend to spend any
                 more than around 4 days on this site. -->
-                Type something into the box below. Or, click on some of the buttons in the table for examples.
-                This is currently more of a tech demo than a polished and working product, I am currently at
-                the stage where I am sketching out some ideas and seeing how viable this idea is before
-                actually working on it seriously with efficient algorithms, or in a different language like
-                C++ or Rust.
+                <p>
+                    Type something into the box below. Or, click on some of the buttons in the table for examples.
+                </p>
+                <p>
+                    This is currently more of a tech demo than a polished and working product, I am currently at
+                    the stage where I am sketching out some ideas and seeing how viable this idea is before
+                    actually working on it seriously with efficient algorithms, or in a different language like
+                    C++ or Rust.
+                </p>
             </div>
         </div>
         <div>
@@ -174,8 +178,11 @@
         };
         const builtInConstants = Object.keys(builtInConstantsMap);
 
-        function evaluateVariable(ctx, x, err = true) {
-            const name = x.text;
+        function getVariable(ctx, name, shouldReturnError = true) {
+            if (typeof name !== "string") {
+                throw new Error("You aren't calling getVariable right");
+            }
+
             let v = builtInConstantsMap[name];
             if (v) {
                 return v;
@@ -185,7 +192,7 @@
                 return v;
             }
 
-            if (err) {
+            if (shouldReturnError) {
                 return makeErr(
                     ctx,
                     `the variable ${name} hasn't been declared yet.
@@ -194,6 +201,11 @@
             }
 
             return null;
+        }
+
+        function evaluateVariable(ctx, x, err = true) {
+            const name = x.text;
+            return getVariable(ctx, name, err)
         }
 
         // the function operator(T1, t2) can be found by doing binOpMatrix[t1][t2][operator].
@@ -413,7 +425,7 @@
                     data: Array(args.map((x) => x.val).reduce((prev, next) => prev * next, 1)).fill(0),
                     shape: args.map((x) => x.val)
                 }) // no error checks? TODO: add. later, of
-            }
+            },
         };
         const builtinFunctions = Object.keys(builtinFunctionsMap);
 
@@ -446,16 +458,26 @@
         }
 
         function evaluateAssignment(ctx, x) {
-            if (x.lhs.t !== T_IDENT && x.lhs.t !== T_TENSOR) {
+            if (x.lhs.t !== T_IDENT && x.lhs.t !== T_EXPR_INDEXATION) {
                 return makeErr(ctx, `'${ctx.text.substring(x.start, x.end)}' - invalid assignment`);
             }
 
-            let ident = x.lhs.text;
-            if (!ident) {
-                return makeErr(ctx, `identifier was blank`);
+            let varName = null;
+            let isIndexation = false;
+            if (x.lhs.t === T_IDENT) {
+                varName = x.lhs.text;
+            } else if (x.lhs.t = T_EXPR_INDEXATION && x.lhs.expr.t === T_IDENT) {
+                varName = x.lhs.expr.text;
+                isIndexation = true;
+            } else {
+                return makeErr(ctx, `can't assign to lhs type ${x.t}`);
             }
 
-            if (builtinFunctions.includes(ident)) {
+            // check if variable can be assigned to
+            if (!varName) {
+                return makeErr(ctx, `identifier was blank`);
+            }
+            if (builtinFunctions.includes(varName)) {
                 // compilers need more of this I think. what could possibly go wrong?
                 return makeErr(
                     ctx,
@@ -466,27 +488,80 @@
             }
 
             const rhs = evaluateExpression(ctx, x.rhs);
-            const existingVar = evaluateVariable(ctx, x.lhs, false);
+            const existingVar = getVariable(ctx, varName, false);
+
+            if (isIndexation) {
+                if (x.isDeclaration) {
+                    return makeErr(ctx, `can't declare a new variable inside a tensor, doesn't make sense conceptually (hint: just use '=')`);
+                }
+            }
+            // isDeclaration will always be false when isIndexation is true from here on
 
             if (x.isDeclaration) {
                 if (existingVar !== null) {
                     return makeErr(
                         ctx,
                         Math.random() < 0.05
-                            ? `NOOOO!! you cant just redefine ${ident} to be ${rhs.val}`
-                            : `variable ${ident} already defined, with value: ${existingVar.val}`
+                            ? `NOOOO!! you cant just redefine ${varName} to be ${rhs.val}`
+                            : `variable ${varName} already defined, with value: ${existingVar.val}`
                     );
                 }
             } else {
                 if (existingVar === null) {
                     return makeErr(
                         ctx,
-                        `variable ${ident} does not yet exist, do ${ident} := ${x.rhs.text} if you wanted to create a new variable`
+                        `variable ${varName} does not yet exist, do ${varName} := ${x.rhs.text} if you wanted to create a new variable`
                     );
                 }
             }
 
-            ctx.variables.set(ident, rhs);
+
+            if (isIndexation) {
+                if (x.isDeclaration) {
+                    return makeErr(ctx, `can't declare a new variable inside a tensor, doesn't make sense conceptually (hint: just use '=')`);
+                }
+
+                // we are going to set the values directly in the tensor
+                const tensor = existingVar;
+
+                const [flattenedIndices, newShape, err] = evaluateIndicesToFlatArray(ctx, x, tensor.shape, x.lhs.indexes.map(x => evaluateExpression(ctx, x)));
+                if (err !== null) {
+                    return err;
+                }
+
+                // the thing we're assigning to should have the same shape (at some level at least)
+                if (newShape.length === tensor.shape.length) {
+                    if (rhs.vt !== VT_NUMBER) {
+                        return makeErr(ctx, `rhs must be a number`)
+                    }
+
+                    for(let i = 0; i < flattenedIndices.length; i++) {
+                        tensor.data[flattenedIndices[i]] = rhs.val;
+                    }
+                } else {
+                    if (rhs.vt !== VT_TENSOR) {
+                        return makeErr(ctx, `rhs must be a tensor`);
+                    }
+
+                    const remainingShape = tensor.shape.slice(newShape.length);
+                    if (!areSameShape(rhs.shape, remainingShape)) {
+                        return makeErr(ctx, `rhs must be a tensor with shape ` + remainingShape.join("x"));
+                    }
+
+                    // we can do this, because rhs is the same shape as the remaining tensor
+                    for(let i = 0; i < flattenedIndices.length; i++) {
+                        for(let j = 0; j < rhs.data.length; j++) {
+                            tensor.data[flattenedIndices[i] + j] = rhs.data[j];
+                        }
+                    }
+                }
+
+                return rhs;
+            };
+
+
+
+            ctx.variables.set(varName, rhs);
             return rhs;
         }
 
@@ -577,7 +652,7 @@
             return tensor;
         }
 
-        function evaluateIndicesToFlatArray(ctx, x, shape, indexes) {
+        function evaluateIndicesToFlatArray(ctx, errorNode, shape, indexes) {
             const strides = Array(shape.length);
 
             const newShape = [];
@@ -602,14 +677,14 @@
                 if (idx.vt === VT_NUMBER) {
                     for (let j = 0; j < flatIndexes.length; j++) {
                         if (idx.val < 0 || idx.val >= shape[i]) {
-                            return [null, null, makeErr(ctx, `index ${idx.val} in ${ctx.text.substring(x.start, x.end)} was out of bounds`)];
+                            return [null, null, makeErr(ctx, `index ${idx.val} in ${ctx.text.substring(errorNode.start, errorNode.end)} was out of bounds`)];
                         }
                         
                         flatIndexes[j] += strides[i] * idx.val;
                     }
                     newShape.push(1);
                 } else if (idx.vt === VT_TENSOR) {
-                    // only support for 1d tensors for now. I'm not yet sure how to think about a matrix / tensor indexing into something, but I'm sure it is possible
+                    // TODO: nd indexes. I don't know how, but it is definitely useful
                     if (idx.shape.length > 1) {
                         return [null, null, makeErr(ctx,`only numbers or 1d tensors (aka vectors) can be used as an indexer`)];
                     }
@@ -623,7 +698,7 @@
                     // yeah I think this is right but I cant be arsed reviewing
                     for (let j = 0; j < idx.data.length; j++) {
                         if (idx.data[j] < 0 || idx.data[j] >= shape[i]) {
-                            return [null, null, makeErr(ctx, `index ${idx.data[j]} in ${ctx.text.substring(x.start, x.end)} was out of bounds`)];
+                            return [null, null, makeErr(ctx, `index ${idx.data[j]} in ${ctx.text.substring(errorNode.start, errorNode.end)} was out of bounds`)];
                         }
 
                         for (let k = 0; k < originalLen; k++) {
@@ -1601,7 +1676,7 @@
 
         // ---- set value
 
-        input.value = "[[1,2,3],[4,5,6]][0]";
+        input.value = "x := [1,2,3]; x[0] = 2; x";
         rerender();
 
         // ---- add testcases,
