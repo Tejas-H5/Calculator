@@ -492,7 +492,7 @@
 
             if (isIndexation) {
                 if (x.isDeclaration) {
-                    return makeErr(ctx, `can't declare a new variable inside a tensor, doesn't make sense conceptually (hint: just use '=')`);
+                    return makeErr(ctx, `${ctx.text.substring(x.start, x.end)} - can't declare a new variable inside a thing, doesn't make sense conceptually (hint: just use '=')`);
                 }
             }
             // isDeclaration will always be false when isIndexation is true from here on
@@ -524,26 +524,33 @@
                 // we are going to set the values directly in the tensor
                 const tensor = existingVar;
 
-                const [flattenedIndices, newShape, err] = evaluateIndicesToFlatArray(ctx, x, tensor.shape, x.lhs.indexes.map(x => evaluateExpression(ctx, x)));
+                const [flattenedIndices, remainingShape, err] = evaluateIndicesToFlatArray(ctx, x, tensor.shape, x.lhs.indexes.map(x => evaluateExpression(ctx, x)));
                 if (err !== null) {
                     return err;
                 }
 
                 // the thing we're assigning to should have the same shape (at some level at least)
-                if (newShape.length === tensor.shape.length) {
-                    if (rhs.vt !== VT_NUMBER) {
-                        return makeErr(ctx, `rhs must be a number`)
-                    }
+                if (remainingShape.length === 0) {
+                    if (rhs.vt === VT_TENSOR) {
+                        if (flattenedIndices.length !== rhs.data.length) {
+                            return makeErr(ctx, `rhs of ${nodeText(ctx, x)} needs the same number of elements as indices (${flattenedIndices.length}), instead ${rhs.data.length} were provided`)
+                        }
 
-                    for(let i = 0; i < flattenedIndices.length; i++) {
-                        tensor.data[flattenedIndices[i]] = rhs.val;
+                        for(let i = 0; i < flattenedIndices.length; i++) {
+                            tensor.data[flattenedIndices[i]] = rhs.data[i];
+                        }
+                    } else if (rhs.vt === VT_NUMBER) {
+                        for(let i = 0; i < flattenedIndices.length; i++) {
+                            tensor.data[flattenedIndices[i]] = rhs.val;
+                        }
+                    } else {
+                        return makeErr(ctx, `rhs must be a number or tensor`)
                     }
                 } else {
                     if (rhs.vt !== VT_TENSOR) {
                         return makeErr(ctx, `rhs must be a tensor`);
                     }
 
-                    const remainingShape = tensor.shape.slice(newShape.length);
                     if (!areSameShape(rhs.shape, remainingShape)) {
                         return makeErr(ctx, `rhs must be a tensor with shape ` + remainingShape.join("x"));
                     }
@@ -592,6 +599,10 @@
             return true;
         }
 
+        function nodeText(ctx, node) {
+            return `${ctx.text.substring(node.start, node.end)}`;
+        }
+
         function evaluateTensor(ctx, x) {
             const depthFirstEvalTensor = (x) => {
                 if (x.t !== T_TENSOR) {
@@ -602,10 +613,7 @@
 
                     return makeErr(
                         ctx,
-                        `bottom level item ${ctx.text.substring(
-                            x.start,
-                            x.end
-                        )} in tensor not of correct type - ${vtToString(val.vt)}`
+                        `bottom level item ${nodeText(ctx, x)} in tensor not of correct type - ${vtToString(val.vt)}`
                     );
                 }
 
@@ -628,10 +636,7 @@
                         } else if (!areSameShape(expectedShape, row.shape)) {
                             return makeErr(
                                 ctx,
-                                `one of the elements of the tensor was the wrong size: ${ctx.text.substring(
-                                    x.rows[i].start,
-                                    x.rows[i].end
-                                )}`
+                                `one of the elements of the tensor was the wrong size: ${nodeText(ctx, x.rows[i])}`
                             );
                         }
 
@@ -655,8 +660,6 @@
         function evaluateIndicesToFlatArray(ctx, errorNode, shape, indexes) {
             const strides = Array(shape.length);
 
-            const newShape = [];
-
             // at each level, we should know how big the stride is.
             // we calculate this with a cumulative sum. at the lowest level, the stride is 1.
             // if we have a 2x3 matrix, the things would be [6, 3, 1], with 6 being the total number of things in
@@ -672,46 +675,77 @@
             // [[1,2,3],[4,5,6]][1][0] -> 3 + 0
             // [[1,2,3],[4,5,6]][[0, 1]][0] -> [0 + 0, 3 + 0]
             const flatIndexes = [0];
-            for (let i = 0; i < indexes.length; i++) {
+            let i = 0;
+            while(i < indexes.length) { // incrementing i is done on a type by type basis. it is basically the current 'dimension'
                 const idx = indexes[i];
                 if (idx.vt === VT_NUMBER) {
                     for (let j = 0; j < flatIndexes.length; j++) {
                         if (idx.val < 0 || idx.val >= shape[i]) {
-                            return [null, null, makeErr(ctx, `index ${idx.val} in ${ctx.text.substring(errorNode.start, errorNode.end)} was out of bounds`)];
+                            return [null, null, makeErr(ctx, `index ${idx.val} in ${nodeText(ctx, errorNode)} was out of bounds`)];
                         }
                         
                         flatIndexes[j] += strides[i] * idx.val;
                     }
-                    newShape.push(1);
+                    i++;
                 } else if (idx.vt === VT_TENSOR) {
-                    // TODO: nd indexes. I don't know how, but it is definitely useful
-                    if (idx.shape.length > 1) {
-                        return [null, null, makeErr(ctx,`only numbers or 1d tensors (aka vectors) can be used as an indexer`)];
+                    let isListOfVectors = idx.shape.length === 2;
+                    let isListOfNumbers = idx.shape.length === 1;
+                    if (!isListOfNumbers && !isListOfVectors) {
+                        return [null, null, makeErr(ctx,`only numbers, lists of numbers, or lists of vectors can be used as indices. \n\t(Note that this doesn't include vectors, as they can be misconstrued as a list of numbers. You will need to wrap your vector in a list)`)];
                     }
 
                     // copy the indices we already have for each index specified
                     let originalLen = flatIndexes.length;
-                    for (let j = 0; j < idx.data.length - 1; j++) {
+                    let numIndices = isListOfNumbers ? idx.data.length : idx.shape[0];
+                    for (let j = 0; j < numIndices - 1; j++) {
                         flatIndexes.push(...flatIndexes.slice(0, originalLen));
                     }
 
-                    // yeah I think this is right but I cant be arsed reviewing
-                    for (let j = 0; j < idx.data.length; j++) {
-                        if (idx.data[j] < 0 || idx.data[j] >= shape[i]) {
-                            return [null, null, makeErr(ctx, `index ${idx.data[j]} in ${ctx.text.substring(errorNode.start, errorNode.end)} was out of bounds`)];
+                    if (isListOfNumbers) {
+                        for (let j = 0; j < numIndices; j++) {
+                            // bounds check
+                            if (idx.data[j] < 0 || idx.data[j] >= shape[i]) {
+                                return [null, null, makeErr(ctx, `index ${idx.data[j]} in ${nodeText(ctx, errorNode)} was out of bounds`)];
+                            }
+    
+                            // TODO: better comment
+                            // increment the index by the current dimension
+                            for (let k = 0; k < originalLen; k++) {
+                                flatIndexes[j * originalLen + k] += strides[i] * idx.data[j];
+                            }
+                        }
+                        i++;
+                    } else {
+                        const vecSize = idx.shape[1];
+                        if (i + vecSize > shape.length) {
+                            return [null, null, makeErr(ctx, `the indexing part of ${nodeText(ctx, errorNode)} has too many dimensions`)];
                         }
 
-                        for (let k = 0; k < originalLen; k++) {
-                            flatIndexes[j * originalLen + k] += strides[i] * idx.data[j];
+                        for(let j = 0; j < numIndices; j++) {
+                            for (let k = 0; k < originalLen; k++) {
+                                // we have a point or something, we need to advance the dimension by the length of this thing at the end
+                                for (let dimOffset = 0; dimOffset < vecSize; dimOffset++) {
+                                    // bounds check
+                                    if (idx.data[j] < 0 || idx.data[j] >= shape[i]) {
+                                        return [null, null, makeErr(ctx, `index ${idx.data[j]} in ${nodeText(ctx, errorNode)} was out of bounds`)];
+                                    }
+                                }
+                                
+                                for (let dimOffset = 0; dimOffset < vecSize; dimOffset++) {
+                                    flatIndexes[j * originalLen + k] += strides[i + dimOffset] * idx.data[j * vecSize + dimOffset];
+                                }
+                            }
                         }
+
+                        i += vecSize;
                     }
-                    newShape.push(idx.data.length);
+
                 } else {
                     return [null, null, makeErr(ctx, `tf kinda type is this huh: ${vtToString(idx.vt)}`)]
                 }
             }
 
-            return [flatIndexes, newShape, null];
+            return [flatIndexes, shape.slice(i), null];
         }
 
         function evaluateIndexation(ctx, x) {
@@ -721,35 +755,14 @@
             }
             const indexes = x.indexes.map((x) => evaluateExpression(ctx, x));
 
-            const [flatIndices, newShape, err] = evaluateIndicesToFlatArray(ctx, x, expr.shape, indexes);
+            const [flatIndices, remainingShape, err] = evaluateIndicesToFlatArray(ctx, x, expr.shape, indexes);
             if (err !== null) {
                 return err;
-            }
-
-            // bounds checking code. TODO: use it or delete it
-            // if (start >= expr.data.length || start < 0) {
-            //     return makeErr(ctx, `index ${start} in ${ctx.text.substring(x.start, x.end)} was out of bounds`)
-            // }
-            if (newShape.length === expr.shape.length) {
-                for(let i = 0; i < flatIndices.length; i++) {
-                    flatIndices[i] = expr.data[flatIndices[i]];
-                }
-    
-                if (flatIndices.length === 1) {
-                    return makeNumber(flatIndices[0]);
-                }
-    
-                return {
-                    vt: VT_TENSOR,
-                    shape: newShape,
-                    data: flatIndices
-                };
             }
 
 
             // note to self: this kind of code is FAR easier to write when in the zone than it is to read,
             // don't be discouraged if you don't understand a word of it. Kinda like regex actually
-            const remainingShape = expr.shape.slice(newShape.length);
             const stride = remainingShape.reduce((a, b) => a * b, 1);
             const largerArray = Array(flatIndices.length * stride);
             for(let i = 0; i < flatIndices.length; i++) {
@@ -760,7 +773,7 @@
 
             return {
                 vt: VT_TENSOR,
-                shape: [flatIndices.length, ...remainingShape],
+                shape: [...remainingShape],
                 data: largerArray
             };
         }
@@ -1676,12 +1689,21 @@
 
         // ---- set value
 
-        input.value = "x := [1,2,3]; x[0] = 2; x";
+        input.value = "x := T(3,3); x[[[0,0],[1,1],[2,2]]] = [1,1,1]; x";
         rerender();
 
         // ---- add testcases,
 
         const testcases = [
+            {
+                name: "identity matrix",
+                input: "x := T(3,3); x[[[0,0],[1,1],[2,2]]] = [1,1,1]; x",
+                output: `[[1, 0, 0], [0, 1, 0], [0, 0, 1]]`
+            },
+            {
+                name: "test assigning to index",
+                input: "x := [1,2,3]; x[0]=2; x\nx = T(2,3); x[0] = [1,2,3]; x"
+            },
             {
                 name: "indexing test 2",
                 input: "[[1,2,3],[4,5,6]][0]",

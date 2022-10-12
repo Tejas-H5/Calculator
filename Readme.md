@@ -14,12 +14,14 @@ I find it much faster to iterate on javascript + HTML than I do with anything el
     - `sin cos tan ceil floor .....`
 - variables
 - ternary operator like condition ? x : y
+- tensors like `T(1200, 700)`
 
 ### What do I want to add next?
+- For loop construct.
+    - classic init, check, iterate c style
+    - also range based i := some list type thing
 
-- tensors like `[]1200x720x...`
-    - want to remove numbers in favour of tensors
-    - need a way to index into the tensor, like [0][0][0];
+- Functions
 
 - array programming like in Sverchok blender addon. basically, a node that was like f(x : float) -> float would implicitly be f(x : float[]) -> float[] by applying the function elementwise, and the number of dimensions is infinite.
     - If a function expects types (T1, T2, ... , Tn), then we first check if the arguments passed in were correct, and evaluate normally.
