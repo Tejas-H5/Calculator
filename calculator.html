@@ -761,6 +761,18 @@
             }
 
 
+            if (remainingShape.length === 0) {
+                for(let i = 0; i < flatIndices.length; i++) {
+                    flatIndices[i] = expr.data[flatIndices[i]];
+                }
+
+                return {
+                    vt: VT_TENSOR,
+                    shape: [flatIndices.length],
+                    data: flatIndices,
+                }
+            }
+
             // note to self: this kind of code is FAR easier to write when in the zone than it is to read,
             // don't be discouraged if you don't understand a word of it. Kinda like regex actually
             const stride = remainingShape.reduce((a, b) => a * b, 1);
@@ -1393,6 +1405,12 @@
 
         function parseTopLevelItem(text, ctx, lines) {
             const start = ctx.pos;
+
+            if (parseForLoop(text, ctx, lines)) return true;
+
+
+            // parse an expression. the ternary is the top-level of an expression.
+
             if (!parseTernary(text, ctx, lines)) return false;
 
             const indexes = [];
@@ -1689,16 +1707,21 @@
 
         // ---- set value
 
-        input.value = "x := T(3,3); x[[[0,0],[1,1],[2,2]]] = [1,1,1]; x";
+        input.value = "x := [[1,2,3], [4,5,6]]; x[0][0]";
         rerender();
 
         // ---- add testcases,
 
         const testcases = [
             {
+                name: "basic indexing",
+                input: "x := [[1,2,3], [4,5,6]]; x[0][0]",
+                expected: "[1]"
+            },
+            {
                 name: "identity matrix",
                 input: "x := T(3,3); x[[[0,0],[1,1],[2,2]]] = [1,1,1]; x",
-                output: `[[1, 0, 0], [0, 1, 0], [0, 0, 1]]`
+                expected: `[[1, 0, 0], [0, 1, 0], [0, 0, 1]]`
             },
             {
                 name: "test assigning to index",
@@ -1707,12 +1730,12 @@
             {
                 name: "indexing test 2",
                 input: "[[1,2,3],[4,5,6]][0]",
-                output: "[1,2,3]"
+                expected: "[1,2,3]"
             },
             {
                 name: "indexing with fewer dimensions should return tensor",
                 input: "[[[1,2,3],[4,5,6]], [[1,2,3],[4,5,6]]][[0, 1]]",
-                output: "[[[1,2,3],[4,5,6]], [[1,2,3],[4,5,6]]][[0, 1]]"
+                expected: "[[[1,2,3],[4,5,6]], [[1,2,3],[4,5,6]]][[0, 1]]"
             },
             {
                 name: "order of operations",
