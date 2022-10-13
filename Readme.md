@@ -15,13 +15,24 @@ I find it much faster to iterate on javascript + HTML than I do with anything el
 - variables
 - ternary operator like condition ? x : y
 - tensors like `T(1200, 700)`
-
-### What do I want to add next?
 - For loop construct.
     - classic init, check, iterate c style
-    - also range based i := some list type thing
+### What do I want to add next?
+- For loop construct.
+    - also range based for loop. `for i in [thing]`
+        - I dont care for it
 
 - Functions
+
+- common math funcs
+    - matrix multiplication
+    - vector math
+    - quaternions
+- common elementwise tensor x number funcs
+
+- `image()` function that accepts a tensor and displays it as an image
+- `plot()` function that accepts two lists, and plots x and ys with a line
+
 
 - array programming like in Sverchok blender addon. basically, a node that was like f(x : float) -> float would implicitly be f(x : float[]) -> float[] by applying the function elementwise, and the number of dimensions is infinite.
     - If a function expects types (T1, T2, ... , Tn), then we first check if the arguments passed in were correct, and evaluate normally.
@@ -30,9 +41,6 @@ I find it much faster to iterate on javascript + HTML than I do with anything el
 
 - user defined functions
 
-
-
-- Some way to draw things
 - quick optimization : store rows as vectors, not individual number objects 
     - or if there was a way to just represent everything as one massive 1d array, that would be nice
     - TODO: make everything a tensor, would simplify a lot of the code
@@ -52,4 +60,27 @@ I find it much faster to iterate on javascript + HTML than I do with anything el
 ### What do I want to remove?
 - `[ERROR]: Argument 0 to function sin was of type ERROR, but it wants NUMBER`
     - such a dumb error. but it is hard to remove. or maybe it is easy and I haven't thought about it enough. 
+
+
+### Have I learned anything from this?
+
+I had originally imagined parsing to be much harder, but when you think about the text as having a tree-like structure, it makes a lot more sense and even becomes quite simple. 
+The algorithm to index into a tensor and get another tensor/assign to locations in a tensor is far more complicated than any of the parser, despite being a completely unrelated side-tangent.
+
+Initially (and even now), I had a parser architecture where  I would parse something, and if it was not the thing I wanted, I would return false at some point, and propagate this upwards. 
+However, there are times where I will have parsed this thing, and then realized that it wasnt it, but then when I am parsing the next thing, I am doing all of the work done by the previous thing all over again. 
+For example, if I want to parse a function call, I will first parse an identifier (being the name of the function), then look for an open brace, followed by a comma separated list of expressions and then a closing brace. 
+If I don't find the brace, I will know that it wasn't a function call, and return false from parseFunctionCall. 
+However, I will then start parsing a variable indexation. 
+It is almost identical to a function call, but with square braces instead of () braces. 
+We parse the identifier all over again, and then find that it isn't an indexation, etc etc. until we find that it is just a plain old variable.
+This is the wrong way to think about it. Really, once an identifier is parsed, the next thing can be a function call, indexation, or nothing and so we should instead have functions named like traverseIdentifier, and so now the functions aren't responsible for parsing a specific thing, 
+but traversing a type of identifier. 
+But maybe I have it right. Maybe by doing this traversal approach, we loose the broader context of which the identifier was a part of. 
+I think sometimes it works and sometimes it doesn't.
+One thing I know for sure now is to have some sort of tree diagram displaying the parsing order of things. 
+I thought that only expressions, terms, and root level things in a math expression had order operations, but turns out 
+EVERYTHING IN THE LANGUAGE will have some form of precedence or whatever associated with it, and it is very easy to loose track of
+what is on what level and make an incorrect parsing tree (which I have probably already done).
+When I do this again, I will probably keep some sort of document on the side to keep track of this precedence/hierarchy tree. 
 

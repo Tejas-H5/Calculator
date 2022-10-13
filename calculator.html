@@ -143,7 +143,9 @@
                 vt: VT_ERROR,
                 val: info
             };
-            ctx.errors.push(err);
+            
+            ctx.errors[0] = err;
+
             return err;
         }
 
@@ -270,7 +272,7 @@
         const unaryOpsMap = {
             [VT_NUMBER]: {
                 "+": (x) => x,
-                "-": (x) => ({ vt: x.vt, val: -x.val })
+                "-": (x) => ({ vt: x.vt, val: -x.val }),
             }
         };
         const unaryOps = [];
@@ -466,7 +468,7 @@
             let isIndexation = false;
             if (x.lhs.t === T_IDENT) {
                 varName = x.lhs.text;
-            } else if (x.lhs.t = T_EXPR_INDEXATION && x.lhs.expr.t === T_IDENT) {
+            } else if (x.lhs.t === T_EXPR_INDEXATION && x.lhs.expr.t === T_IDENT) {
                 varName = x.lhs.expr.text;
                 isIndexation = true;
             } else {
@@ -567,9 +569,16 @@
             };
 
 
+            let setError = ctx.variables.set(varName, rhs, x.isDeclaration);
+            if (setError !== null) {
+                return setError;
+            }
 
-            ctx.variables.set(varName, rhs);
             return rhs;
+        }
+
+        function isTrue(x) {
+            return x.vt === VT_NUMBER && x.val >= 0.5;
         }
 
         function evaluateTernary(ctx, x) {
@@ -581,7 +590,7 @@
                 );
             }
 
-            if (condition.val >= 0.5) {
+            if (isTrue(condition)) {
                 return evaluateExpression(ctx, x.ifTrue);
             }
 
@@ -790,6 +799,42 @@
             };
         }
 
+        function evaluateForLoop(ctx, x) {
+            ctx.variables.pushStackFrame();
+
+            // initialize loop
+            for(let i = 0; i < x.initializers.length; i++) {
+                evaluateExpression(ctx, x.initializers[i]);
+            }
+
+            let maxLoopCount = 1000000, safetyCounter = 0;
+
+            // drive loop
+            for(; 
+                safetyCounter < maxLoopCount && isTrue(evaluateExpression(ctx, x.loopCondition));
+                safetyCounter++ // make sure we can't get any infinite loops even if we want to. I don't know how to allow users to break them yet
+            ) {
+
+                // loop body
+                for(let i = 0; i < x.loopBody.length; i++) {
+                    evaluateExpression(ctx, x.loopBody[i]);
+                }
+
+                // increment
+                for(let i = 0; i < x.iterators.length; i++) {
+                    evaluateExpression(ctx, x.iterators[i]);
+                }
+            }
+
+            ctx.variables.popStackFrame();
+
+            if (safetyCounter === maxLoopCount) {
+                return makeErr(ctx, `you may have an infinite loop in your program - they are very easy to run into, which is why I have a limiter of 1,000,000 iterations per loop for now`);
+            }
+
+            return { vt: VT_NULL };
+        }
+
         function evaluateExpression(ctx, x) {
             if (!x) {
                 throw new Error("expression not defined");
@@ -828,17 +873,70 @@
                 case T_TENSOR:
                     value = evaluateTensor(ctx, x);
                     break;
+                case T_FOR_LOOP:
+                    value = evaluateForLoop(ctx, x);
+                    break;
                 default:
-                    value = makeErr(ctx, "Unknown ast node type");
+                    value = makeErr(ctx, "Unknown ast node type: " + type);
                     break;
             }
 
             return value;
         }
 
+
+        // a stack of hashmaps to keep track of scopes. 
+        class ScopeStack {
+            constructor() {
+                this.scopes = [new Map()];
+            }
+            pushStackFrame() {
+                this.scopes.push(new Map());
+            }
+            popStackFrame() {
+                return this.scopes.pop();
+            }
+            has(key) {
+                for(let i = this.scopes.length - 1; i >= 0; i--) {
+                    if (this.scopes[i].has(key)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            get(key) {
+                for(let i = this.scopes.length - 1; i >= 0; i--) {
+                    if (this.scopes[i].has(key)) {
+                        return this.scopes[i].get(key);
+                    }
+                }
+
+                return null;
+            }
+            set(key, value, isDeclaration) {
+                // if declaration, create variable in local scope
+                if (isDeclaration) {
+                    this.scopes[this.scopes.length - 1].set(key, value);
+                    return null;
+                } else {
+                    // else, set variable in whatever scope it is in
+                    for (let i = this.scopes.length - 1; i >= 0; i--) {
+                        if (!this.scopes[i].has(key)) continue;
+                        
+                        this.scopes[i].set(key, value);
+                        return null;
+                    }
+    
+                    return makeErr(`could not set ${key}, it was not found`);
+                }
+
+            }
+        }
+
         function evaluateProgram(program, text) {
             const ctx = {
-                variables: new Map(),
+                variables: new ScopeStack(),
                 errors: [],
                 text: text
             };
@@ -920,6 +1018,13 @@
         const T_TERNARY = debug ? "T_TERNARY" : 11;
         const T_TENSOR = debug ? "T_TENSOR" : 12;
         const T_EXPR_INDEXATION = debug ? "T_EXPR_INDEXATION" : 13;
+        const T_FOR_LOOP = debug ? "T_FOR_LOOP" : 14;
+
+
+        const reservedKeywords = [
+            "for"
+        ];
+
 
         // Thankyou Trevor https://stackoverflow.com/questions/1496826/check-if-a-single-character-is-a-whitespace
         function isWhitespace(c) {
@@ -1123,7 +1228,7 @@
 
             if (text[start] === "(") {
                 ctx.pos = start + 1;
-                if (parseTopLevelItem(text, ctx, lines)) {
+                if (parseExpressionTopLevel(text, ctx, lines)) {
                     ctx.pos = advanceWhileWhitespace(text, ctx.pos);
                     if (text[ctx.pos] === ")") {
                         lines[lines.length - 1].start = start;
@@ -1159,7 +1264,7 @@
             }
 
             ctx.pos = advanceWhileWhitespace(text, ctx.pos);
-            if (!parseTopLevelItem(text, ctx, expr)) {
+            if (!parseExpressionTopLevel(text, ctx, expr)) {
                 return false;
             }
 
@@ -1191,11 +1296,14 @@
 
             ctx.pos = pos;
 
+            const identText = text.substring(start, ctx.pos);
+            if (reservedKeywords.includes(identText)) return false;
+
             lines.push({
                 t: T_IDENT,
                 start: start,
                 end: ctx.pos,
-                text: text.substring(start, ctx.pos)
+                text: identText
             });
 
             return true;
@@ -1270,7 +1378,7 @@
                         text,
                         ctx,
                         args,
-                        parseTopLevelItem,
+                        parseExpressionTopLevel,
                         (t, pos) => hasText(t, pos, ","),
                         (t, pos) => hasText(t, pos, ")")
                     )
@@ -1322,7 +1430,7 @@
                     text,
                     ctx,
                     rows,
-                    parseTopLevelItem,
+                    parseExpressionTopLevel,
                     (t, pos) => hasText(t, pos, ","),
                     (t, pos) => hasText(t, pos, "]")
                 )
@@ -1391,7 +1499,7 @@
             while (hasText(text, ctx.pos, "[")) {
                 ctx.pos = advanceWhileWhitespace(text, ctx.pos + 1);
 
-                if (!parseTopLevelItem(text, ctx, indexes)) return false;
+                if (!parseExpressionTopLevel(text, ctx, indexes)) return false;
 
                 ctx.pos = advanceWhileWhitespace(text, ctx.pos);
                 if (!text[ctx.pos] === "]") {
@@ -1403,14 +1511,78 @@
             return true;
         }
 
-        function parseTopLevelItem(text, ctx, lines) {
-            const start = ctx.pos;
+        function parseForLoop(text, ctx, lines) {
+            const start = advanceWhileWhitespace(text, ctx.pos);
+            if (start >= text.length ) {
+                return false;
+            }
 
+            if (!hasText(text, ctx.pos, "for")) return false;
+
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos+3);
+
+            const initializers = [];
+            const loopCondition = [];
+            const iterators = [];
+            const loopBody = [];
+
+            // parse initializers
+            if (!parseDelimitedList(
+                text, ctx, initializers, parseAssignment, 
+                (t, pos) => hasText(t, pos, ","),
+                (t, pos) => hasText(t, pos, ";")
+            )) {
+                return false;
+            }
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos+1);
+
+            // parse loop condition expression
+            if (!parseExpressionTopLevel(text, ctx, loopCondition)) return false;
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos);
+
+            if (!hasText(text, ctx.pos, ";")) return false;
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos+1);
+
+            // parse loop iterators
+            if (!parseDelimitedList(
+                text, ctx, iterators, parseAssignment, 
+                (t, pos) => hasText(t, pos, ","),
+                (t, pos) => hasText(t, pos, "{")
+            )) {
+                return false;
+            }
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos);
+
+            if (!parseExpressionList(text, ctx, loopBody)) return false;
+
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos);
+            if (hasText(text, ctx.pos, "}")) {
+                ctx.pos += 1;
+            }
+
+            lines.push({
+                t: T_FOR_LOOP,
+                start: start,
+                end: ctx.pos,
+                initializers: initializers,
+                loopCondition: loopCondition[0],
+                iterators: iterators,
+                loopBody: loopBody
+            });
+            return true;
+        }
+
+        function parseExpressionTopLevel(text, ctx, lines) {
+            const start = advanceWhileWhitespace(text, ctx.pos);
+            if (start >= text.length ) {
+                return false;
+            }
+
+            ctx.pos = start;
             if (parseForLoop(text, ctx, lines)) return true;
 
-
             // parse an expression. the ternary is the top-level of an expression.
-
+            ctx.pos = start;
             if (!parseTernary(text, ctx, lines)) return false;
 
             const indexes = [];
@@ -1476,7 +1648,7 @@
             }
 
             const expr = [];
-            if (!parseTopLevelItem(text, ctx, expr)) return false;
+            if (!parseExpressionTopLevel(text, ctx, expr)) return false;
 
             const assignOpPos = advanceWhileWhitespace(text, ctx.pos);
 
@@ -1491,7 +1663,7 @@
                 return true;
             }
 
-            if (!parseTopLevelItem(text, ctx, expr)) return false;
+            if (!parseExpressionTopLevel(text, ctx, expr)) return false;
 
             lines.push({
                 t: T_ASSIGNMENT,
@@ -1527,7 +1699,8 @@
             const ctx = { pos: 0 };
             const lines = [];
 
-            while (parseExpressionList(text, ctx, lines)) {}
+            // this used to be a while loop, we may need to fix a bug here. if not, delete this comment
+            parseExpressionList(text, ctx, lines);
             ctx.pos = advanceWhileWhitespace(text, ctx.pos);
 
             const root = {
@@ -1680,15 +1853,13 @@
             //         }
             //     }
             // }
-            resultsTextOutput = result.results
-                .map((v) => (v.show ? thingToString(v) : undefined))
-                .filter((v) => !!v);
-            resultsTextOutput = resultsTextOutput.join("\n");
+            const lastResult = result.results[result.results.length - 1];
+            resultsTextOutput = lastResult.show ? thingToString(lastResult) : "";
 
             const errorsTextOutput =
                 result.errors.length === 0
                     ? ""
-                    : "<pre>All errors:</pre>" +
+                    : `<pre>Last ${result.errors.length} errors:</pre>` +
                       result.errors
                           .map((v) => {
                               return `<pre class="error">${thingToString(v)}</pre>`;
@@ -1707,12 +1878,27 @@
 
         // ---- set value
 
-        input.value = "x := [[1,2,3], [4,5,6]]; x[0][0]";
+        input.value = "x := T(10, 10);\nfor i:=0; i < 10; i = i+1 {\n\tx[i][i]=1\n}\n\nx";
         rerender();
 
         // ---- add testcases,
 
         const testcases = [
+            {
+                name: "identity matrix",
+                input: "x := T(10, 10);\nfor i:=0; i < 10; i = i+1 {\n\tx[i][i]=1\n}\n\nx", 
+                expected: "Identity matrix 10x10"
+            },
+            {
+                name: "for loop local scope",
+                input:"x := 0;\nfor i := 0; i < 5; i=i+1 { x = x + 1; }\nfor i := 0; i < 5; i=i+1 { x = x + 1; }\nx", 
+                expected: "10"
+            },
+            {
+                name: "for loop",
+                input:"x := 0;\nfor i := 0; i < 5; i=i+1 { x = x + 1; }\nx", 
+                expected: "5"
+            },
             {
                 name: "basic indexing",
                 input: "x := [[1,2,3], [4,5,6]]; x[0][0]",
@@ -1734,8 +1920,8 @@
             },
             {
                 name: "indexing with fewer dimensions should return tensor",
-                input: "[[[1,2,3],[4,5,6]], [[1,2,3],[4,5,6]]][[0, 1]]",
-                expected: "[[[1,2,3],[4,5,6]], [[1,2,3],[4,5,6]]][[0, 1]]"
+                input: "[[[1,2,3],[4,5,6]], [[4,4,4],[4,5,6]]][[0, 1]]",
+                expected: "[[4,4,4],[4,5,6]]"
             },
             {
                 name: "order of operations",
