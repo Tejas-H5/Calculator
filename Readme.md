@@ -17,45 +17,40 @@ I find it much faster to iterate on javascript + HTML than I do with anything el
 - tensors like `T(1200, 700)`
 - For loop construct.
     - classic init, check, iterate c style
+- user defined functions
 ### What do I want to add next?
-- For loop construct.
-    - also range based for loop. `for i in [thing]`
-        - I dont care for it
-
-- Functions
+- range based for loop construct.
+    - `for i in [thing]`
+    - I dont care for it at the moment
 
 - common math funcs
     - matrix multiplication
     - vector math
     - quaternions
-- common elementwise tensor x number funcs
 
-- `image()` function that accepts a tensor and displays it as an image
+- `mesh()` function that accepts a list of vertices and triangle indices, and generates a 3D Mesh
+- `image()` function that accepts a matrix and displays it as an image
 - `plot()` function that accepts two lists, and plots x and ys with a line
-
 
 - array programming like in Sverchok blender addon. basically, a node that was like f(x : float) -> float would implicitly be f(x : float[]) -> float[] by applying the function elementwise, and the number of dimensions is infinite.
     - If a function expects types (T1, T2, ... , Tn), then we first check if the arguments passed in were correct, and evaluate normally.
     Else, we see which arguments are of type T1[][]..., and then we go ahead and invoke the function multiple times for every value of T1 in the array, for each argument.
         - order can be non-deterministic
 
-- user defined functions
-
-- quick optimization : store rows as vectors, not individual number objects 
-    - or if there was a way to just represent everything as one massive 1d array, that would be nice
-    - TODO: make everything a tensor, would simplify a lot of the code
-
-- A C++ port ?
 - Hex, binary, custom base numbers
 
-- easy optimizations: 
 - Times
     - like `1:20am` and then we can add/subtract them to get durations and such
     - Also dates
     - And numbers with arbitrary units
+        - not clear how I would do this just yet
+
+### The near distant future
 - Big numbers. unlimited size numbers. and manually implement arithmetic
     - Might just yoink someone else's library for this. I can't be bothered
-    - This is quite hard to get right, I will try again later
+    - Turns out this is quite hard to get right, I will try again later
+- A C++/Rust port ?
+    - most likely will be rust, as that is easier to program this in
 
 ### What do I want to remove?
 - `[ERROR]: Argument 0 to function sin was of type ERROR, but it wants NUMBER`
@@ -83,4 +78,12 @@ I thought that only expressions, terms, and root level things in a math expressi
 EVERYTHING IN THE LANGUAGE will have some form of precedence or whatever associated with it, and it is very easy to loose track of
 what is on what level and make an incorrect parsing tree (which I have probably already done).
 When I do this again, I will probably keep some sort of document on the side to keep track of this precedence/hierarchy tree. 
+This method is also better for catching parsing errors. 
+Right now, I can't catch any parsing errors because there is no guarantee that a parsing error was really a parsing error, or just an inability to parse something because it is actually something else.
+If I use this traverse approach where we don't do any duplicated work, then there can be parts of the program where I am certain that e.g a user was trying to define a function but failed.
 
+Also, `lines` is a terrible for what is really a buffer or something. Can't think of a good name for it.
+But yeah, I should think of a better name. 
+C like languages where arrays and pointers are the same thing are quite well suited to the pattern that I am using to push things onto a buffer and return true/ return false if nothing was pushed.
+The alternative to using this pattern is to return a thing, and then constantly check if thing===null : return false else push(thing).
+Right now I think this is a good enough reason to push inside the functions themselves, may have to keep adding features to change my opinion on this.
