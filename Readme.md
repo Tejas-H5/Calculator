@@ -81,9 +81,3 @@ When I do this again, I will probably keep some sort of document on the side to 
 This method is also better for catching parsing errors. 
 Right now, I can't catch any parsing errors because there is no guarantee that a parsing error was really a parsing error, or just an inability to parse something because it is actually something else.
 If I use this traverse approach where we don't do any duplicated work, then there can be parts of the program where I am certain that e.g a user was trying to define a function but failed.
-
-Also, `lines` is a terrible for what is really a buffer or something. Can't think of a good name for it.
-But yeah, I should think of a better name. 
-C like languages where arrays and pointers are the same thing are quite well suited to the pattern that I am using to push things onto a buffer and return true/ return false if nothing was pushed.
-The alternative to using this pattern is to return a thing, and then constantly check if thing===null : return false else push(thing).
-Right now I think this is a good enough reason to push inside the functions themselves, may have to keep adding features to change my opinion on this.
