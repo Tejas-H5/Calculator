@@ -241,26 +241,117 @@
             return getVariable(ctx, name, err)
         }
 
+        function copyTensor(a) {
+            return {
+                vt: VT_TENSOR,
+                shape: a.shape.slice(),
+                data: a.data.slice()
+            };
+        }
+
+        function getMatrixStride(ctx, a, b) {
+            let remainderPart = a.shape.length - b.shape.length;
+            if (a.shape.length === 1 && b.shape.length === 1 && b.shape[0] === 1) {
+                return 1;
+            } else if(areSameShape(a.shape.slice(remainderPart), b.shape)) {
+                return a.shape.slice(remainderPart).reduce((a, b) => a * b, 1);
+            } else {
+                return makeErr(ctx, "wrong sizes");
+            }
+        }
+
+        function performElementwiseOp(ctx, a, b, op) {
+            const stride = getMatrixStride(ctx, a, b);
+            if (stride.vt === VT_ERROR) return stride;
+
+            const newTensor = copyTensor(a);
+
+            for(let i = 0; i < a.data.length; i += stride) {
+                for(let j = 0; j < b.data.length; j++) {
+                    newTensor.data[i + j] = op(newTensor.data[i + j], b.data[j]);
+                }
+            }
+
+            return newTensor;
+        }
+
         // the function operator(T1, t2) can be found by doing binOpMatrix[t1][t2][operator].
         const binOpMatrix = {
             [VT_NUMBER]: {
                 [VT_NUMBER]: {
-                    "+": (a, b) => makeNumber(a.val + b.val),
-                    "<": (a, b) => makeNumber(a.val < b.val ? 1.0 : 0.0),
-                    ">": (a, b) => makeNumber(a.val > b.val ? 1.0 : 0.0),
-                    "<=": (a, b) => makeNumber(a.val <= b.val ? 1.0 : 0.0),
-                    ">=": (a, b) => makeNumber(a.val >= b.val ? 1.0 : 0.0),
-                    "==": (a, b) => makeNumber(Math.abs(a.val - b.bal) > 0.0000000001 ? 1.0 : 0.0),
-                    "-": (a, b) => makeNumber(a.val - b.val),
-                    "*": (a, b) => makeNumber(a.val * b.val),
-                    "/": (a, b) => makeNumber(a.val / b.val),
-                    "%": (a, b) => makeNumber(a.val % b.val),
-                    "^": (a, b) => makeNumber(Math.pow(a.val, b.val)),
+                    "+": (ctx, a, b) => makeNumber(a.val + b.val),
+                    "<": (ctx, a, b) => makeNumber(a.val < b.val ? 1.0 : 0.0),
+                    ">": (ctx, a, b) => makeNumber(a.val > b.val ? 1.0 : 0.0),
+                    "<=": (ctx, a, b) => makeNumber(a.val <= b.val ? 1.0 : 0.0),
+                    ">=": (ctx, a, b) => makeNumber(a.val >= b.val ? 1.0 : 0.0),
+                    "==": (ctx, a, b) => makeNumber(Math.abs(a.val - b.val) < 0.0000000001 ? 1.0 : 0.0),
+                    "-": (ctx, a, b) => makeNumber(a.val - b.val),
+                    "*": (ctx, a, b) => makeNumber(a.val * b.val),
+                    "/": (ctx, a, b) => makeNumber(a.val / b.val),
+                    "%": (ctx, a, b) => makeNumber(a.val % b.val),
+                    "^": (ctx, a, b) => makeNumber(Math.pow(a.val, b.val)),
+                }
+            },
+            [VT_TENSOR]: {
+                [VT_TENSOR]: {
+                    "**": (ctx, a, b) => {
+                        if (a.shape.length === 1 && b.shape.length === 1 && a.shape[0] === b.shape[0]) {
+                            let sum = 0;
+                            for(let i = 0; i < a.data.length; i++) {
+                                sum += a.data[i] * b.data[i];
+                            }
+                            return makeNumber(sum);
+                        }
+
+                        // matrix multiplication
+                        let aW = a.shape.length === 1 ? a.shape[0] : a.shape[1];
+                        let bW = b.shape.length === 0 ? 1 : (b.shape[1] || 1);
+                        let aH = a.shape.length === 1 ? 1 : a.shape[0];
+                        let bH = b.shape.length === 1 ? b.shape[0] : b.shape[0];
+
+                        if (a.shape.length > 2 || b.shape.length > 2) {
+                            return makeErr(ctx, `matrix multiplication only works with matrices/vectors for now`);
+                        }
+                        if (aW !== bH) {
+                            return makeErr(ctx, `second matrix row count (${bH}) must equal first matrix column count ${aW}`);
+                        }
+
+                        const newData = Array(bW * aH);
+
+                        for(let i = 0; i < bW; i++) {
+                            for(let j = 0; j < aH; j++) {
+                                let dotP = 0;
+                                for(let k = 0; k < bH; k++) {
+                                    dotP += a.data[k + j*aW] *
+                                        b.data[i + k*bW];
+                                }
+                                newData[i + j*bW] = dotP;
+                            }
+                        }
+
+                        return {
+                            vt: VT_TENSOR,
+                            data: newData,
+                            shape: [bW, aH]
+                        };
+                    },
+
+                    "<": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a < b ? 1.0 : 0.0),
+                    ">": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a > b ? 1.0 : 0.0),
+                    "<=": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a <= b ? 1.0 : 0.0),
+                    ">=": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a >= b ? 1.0 : 0.0),
+                    "==": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => Math.abs(a - b) > 0.0000000001 ? 1.0 : 0.0),
+                    "+": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a + b),
+                    "-": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a - b),
+                    "*": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a * b),
+                    "/": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a / b),
+                    "%": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a % b),
+                    "^": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => Math.pow(a, b)),
                 }
             },
             [VT_STRING]: {
                 [VT_STRING]: {
-                    "+": (a, b) => ({ vt: a.vt, val: a.val + b.val }),
+                    "+": (ctx, a, b) => ({ vt: a.vt, val: a.val + b.val }),
                 }
             }
         };
@@ -291,7 +382,7 @@
                 );
             }
 
-            return binOp(lhs, rhs);
+            return binOp(ctx, lhs, rhs);
         }
 
         function evaluateChain(ctx, x) {
@@ -307,6 +398,41 @@
             [VT_NUMBER]: {
                 "+": (x) => x,
                 "-": (x) => ({ vt: x.vt, val: -x.val }),
+            },
+            [VT_TENSOR]: {
+                "-": (x) => {
+                    const tensor = copyTensor(x);
+                    for(let i = 0; i < tensor.data.length; i++) {
+                        tensor.data[i] = -tensor.data[i];
+                    }
+                    return tensor;
+                },
+                "~": (x) => {
+                    if (x.shape.length > 2) {
+                        // I don't have the math knowledge required to make this work for tensors,
+                        // nor do I have a use case beyond matrices, so I shouldn't waste my time on getting this to work
+                        return makeErr(ctx, `transposing is only defined on matrices and vectors at the moment`);
+                    }
+
+                    const tensor = copyTensor(x);
+
+                    if (x.shape.length === 1) {
+                        tensor.shape = [1, tensor.shape];
+                        return tensor;
+                    } 
+
+                    // Even though you may be used to seeing width followed by height everywhere, w, h is the correct reverse order here. 
+                    let w = x.shape[1];
+                    let h = x.shape[0];
+                    tensor.shape = [w, h];
+                    for(let i = 0; i < w; i++) {
+                        for(let j = 0; j < h; j++) {
+                            tensor.data[i*h + j] = x.data[i + j*w]
+                        }
+                    }
+
+                    return tensor;
+                }
             }
         };
         const unaryOps = [];
@@ -333,7 +459,7 @@
 
         // imagine building an interpreted language in an interpreted language
         // also we need a way to represent infinite args. our tensor function can actually take in infinite number args
-        const builtinFunctionsMap =         {
+        const builtinFunctionsMap = {
             abs: {
                 args: [{ vt: VT_NUMBER }],
                 fn: (ctx, ...args) => makeNumber(Math.abs(getVals(args)))
@@ -469,6 +595,17 @@
                     shape: args.map((x) => x.val)
                 }) // no error checks? TODO: add. later, of
             },
+            I: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (ctx, size) => {
+                    const tensor = builtinFunctionsMap.T.fn(ctx, size, size);
+                    for(let i = 0; i < size.val; i++) {
+                        tensor.data[i + size.val * i] = 1;
+                    }
+                    return tensor;
+                }
+            },
+
             // prints a number of minutes as hours and minutes. 
             toHm: {
                 args: [{ vt: VT_NUMBER}],
@@ -985,6 +1122,7 @@
                     break;
                 case T_EXPR:
                 case T_TERM:
+                case T_COMPARISON:
                     value = evaluateChain(ctx, x);
                     break;
                 case T_UNARY_OP:
@@ -1177,6 +1315,8 @@
         const T_FOR_LOOP = debug ? "T_FOR_LOOP" : 14;
         const T_BLOCK = debug ? "T_BLOCK" : 15;
         const T_STRING = debug ? "T_STRING" : 16;
+        const T_OP_COMPARISON = debug ? "T_OP_COMPARISON" : 17;
+        const T_COMPARISON = debug ? "T_COMPARISON" : 18;
 
         const reservedKeywords = [
             "for"
@@ -1286,14 +1426,18 @@
             return false;
         }
 
+        function parseOpComparison(text, ctx, ops) {
+            return parseOneOf(text, ctx, ops, [">=", "<=", "==", ">", "<"], T_OP_COMPARISON);
+        }
+
         // operators with the same precedence as addition
         function parseOpExpr(text, ctx, ops) {
-            return parseOneOf(text, ctx, ops, [">=", "<=", "==", "+", "-", ">", "<"], T_OP_EXPR);
+            return parseOneOf(text, ctx, ops, ["+", "-"], T_OP_EXPR);
         }
 
         // one of *, /, %
         function parseOpTerm(text, ctx, ops) {
-            return parseOneOf(text, ctx, ops, ["*", "/", "%", "^"], T_OP_TERM);
+            return parseOneOf(text, ctx, ops, ["**", "*", "/", "%", "^"], T_OP_TERM);
         }
 
         // one of ^
@@ -1733,6 +1877,10 @@
             return parseChain(text, ctx, lines, T_EXPR, parseTerm, parseOpExpr);
         }
 
+        function parseComparison(text, ctx, lines) {
+            return parseChain(text, ctx, lines, T_COMPARISON, parseExpression, parseOpComparison);
+        }
+
         function parseIndexation(text, ctx, indexes) {
             if (text[ctx.pos] !== "[") {
                 return false;
@@ -1847,6 +1995,7 @@
                 return false;
             }
 
+            // TODO: try moving to root level as thing
             ctx.pos = start;
             if (parseForLoop(text, ctx, lines)) return true;
 
@@ -1870,7 +2019,7 @@
 
         function parseTernary(text, ctx, lines) {
             const expr = [];
-            if (!parseExpression(text, ctx, expr)) return false;
+            if (!parseComparison(text, ctx, expr)) return false;
 
             const ternaryStart = advanceWhileWhitespace(text, ctx.pos);
             ctx.pos = ternaryStart;
@@ -1882,7 +2031,7 @@
 
             ctx.pos = advanceWhileWhitespace(text, ctx.pos + 1);
 
-            if (!parseExpression(text, ctx, expr)) return false;
+            if (!parseComparison(text, ctx, expr)) return false;
 
             ctx.pos = advanceWhileWhitespace(text, ctx.pos);
             if (text[ctx.pos] !== ":") {
@@ -2155,7 +2304,36 @@
                 name: "typical math expression",
                 input: "1 + 2 * 3 + 4^(sin(PI/2)*2)",
                 expected: "23",
-                interesting: true,
+                alwaysShow: true,
+            },
+            {
+                name: "logical comparisons",
+                input: "((1 + 2 + 3 >= 1 + 2 + 3) == (1 + 2 + 3 > 1 + 2 + 3)) == 0",
+                expected: "1",
+                alwaysShow: true
+            },
+            {
+                name: "matrix multiplication",
+                input:`
+A := I(4);
+
+v := [1,2,3,4]
+
+A ** v`,
+                expected: "shape: 1x4, data: [[1,  2,  3,  4]]",
+                alwaysShow: true
+            },
+            {
+                name: "matrix transpose",
+                input: `
+A:= [[1,  2,  3], 
+	 [1,  2,  3], 
+	 [2,  4,  6]]
+~A
+`,
+
+                expected: `shape: 3x3, data: 	[[1,  1,  2], 	 [2,  2,  4], 	 [3,  3,  6]]`,
+                alwaysShow: true,
             },
             {
                 name: "programming constructs - variable assignment",
@@ -2177,7 +2355,7 @@ for i := 0; i < 3; i=i+1 {
 i
 `,
                 expected: "-42",
-                interesting: true,
+                alwaysShow: true,
             },
             {
                 name: "programming constructs - blocks",
@@ -2196,7 +2374,7 @@ x
 
 `,  
                 expected: "90",
-                interesting: true,
+                alwaysShow: true,
             },
             {
                 name: "programming constructs - functions",
@@ -2213,13 +2391,13 @@ g(y, func) := 2 * func(y)
 g(2, f)
 `,
                 expected: "8",
-                interesting: true
+                alwaysShow: true
             },
             {
                 name: "function test",
                 input: "fib(x) := x <= 1 ? 1 : fib(x - 1) + fib(x-2)\n\nfib(10)",
                 expected: "89",
-                interesting: true
+                alwaysShow: true
             },
             {
                 name: "identity matrix for loop",
@@ -2327,13 +2505,14 @@ x = y * x + x`,
             const onlyShowInteresting = !showAllTestcasesCheckbox.checked;
             let passes = 0, fails = 0;
 
+            let tests = testcases
+                    .filter((testcase) => onlyShowInteresting ? testcase.alwaysShow : true);
+
             let testcaseTableHTML =
             `
                 <tr><th>Input</th><th>Output</th></tr>
             ` +
-                testcases
-                    .filter((testcase) => onlyShowInteresting ? testcase.interesting : true)
-                    .map((testcase, i) => {
+                tests.map((testcase, i) => {
                         let output = "", isPassing = false;
 
                         try {
@@ -2389,30 +2568,22 @@ x = y * x + x`,
             }
 
             testcaseContainer.innerHTML = testcaseTableHTML;
-            testcaseContainer.querySelectorAll(".testcase-button").forEach((button) => {
+            for (let id = 0; id < tests.length; id++) {
+                const button = testcaseContainer.querySelector(`.testcase-button[data-testcase-id="${id}"]`);
                 button.addEventListener("click", (e) => {
                     window.scrollTo(0, 0);
-                    input.value = testcases[parseInt(button.getAttribute("data-testcase-id"))].input.trim();
+                    input.value = tests[parseInt(button.getAttribute("data-testcase-id"))].input.trim();
                     rerender();
                 });
-            });
+            }
         }
 
         // ---- set value
         input.value = `
-// anything after // on a line is ignored.
-// the := operator makes a new variable:
-x := 1
+A := [[1,  2,  3], 
+	 [4,  5,  6]];
 
-// the = operator assigns to an existing variable:
-x = 2
-
-// this distinction makes more sense when we have multiple scopes. 
-i := -42
-for i := 0; i < 3; i=i+1 {}
-
-// (it should still be -42)
-i
+A ** [1,0, 0]
 `;
         rerender();
         rerenderTests();

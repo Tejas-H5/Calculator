@@ -32,6 +32,10 @@ I find it much faster to iterate on javascript + HTML than I do with anything el
 - `image()` function that accepts a matrix and displays it as an image
 - `plot()` function that accepts two lists, and plots x and ys with a line
 
+- Parser component rewrite
+    - there are actually a lot of bugs and edge cases in the parser as a result of a few design errors due to a lack of planning.
+    - I have ran into a couple and I can't be bothered fixing them just yet
+
 - array programming like in Sverchok blender addon. basically, a node that was like f(x : float) -> float would implicitly be f(x : float[]) -> float[] by applying the function elementwise, and the number of dimensions is infinite.
     - If a function expects types (T1, T2, ... , Tn), then we first check if the arguments passed in were correct, and evaluate normally.
     Else, we see which arguments are of type T1[][]..., and then we go ahead and invoke the function multiple times for every value of T1 in the array, for each argument.
