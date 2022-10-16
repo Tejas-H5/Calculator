@@ -18,14 +18,17 @@ I find it much faster to iterate on javascript + HTML than I do with anything el
 - For loop construct.
     - classic init, check, iterate c style
 - user defined functions
+- common math funcs
+    - matrix multiplication
+
 ### What do I want to add next?
 - range based for loop construct.
     - `for i in [thing]`
     - I dont care for it at the moment
 
-- common math funcs
-    - matrix multiplication
+- more common math funcs
     - vector math
+        - cross product
     - quaternions
 
 - `mesh()` function that accepts a list of vertices and triangle indices, and generates a 3D Mesh

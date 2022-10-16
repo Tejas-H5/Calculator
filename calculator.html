@@ -8,6 +8,11 @@
     </head>
     <!-- // ---- styles -->
     <style>
+        .flex-row {
+            display: flex;
+            flex-direction: row;
+        }
+
         .testcase-button:hover {
             background: rgba(0,0,0,0.3);
             cursor: pointer;
@@ -43,27 +48,26 @@
             resize: none; /*remove the resize handle on the bottom right*/
         }
 
-        #input {
-            padding-left: 5px;
-            background: #000000;
-            color: #ffffff;
-            font-size: 1.2rem;
-            line-height: 1.2rem;
-            -moz-tab-size: 4;
-            tab-size: 4;
-        }
         #line-numbers {
-            font-size: 1.2rem;
-            line-height: 1.2rem;
             color: #aaaaaa;
             background: #000000;
             outline: none;
             border-right: 1px solid #aaaaaa;
         }
 
+        .code {
+            white-space: pre;
+            tab-size: 4;
+            line-height: 1.4rem;
+        }
+        
         .code div:before {
             content: "|";
             width: 20px;
+        }
+
+        .med {
+            font-size: 1.2rem;
         }
 
         .error {
@@ -84,14 +88,21 @@
             margin: 0px;
         }
 
-        #output {
+        .text-output {
             padding: 5px; 
-            white-space: pre;
-            tab-size: 4;
         }
 
-        #input {
-            
+        .p-5 { padding: 5px; }
+        .m-0 { margin: 0; }
+
+        .indent-1 { margin-left: 4rem; }
+        .indent-2 { margin-left: 8rem; }
+        .indent-3 { margin-left: 12rem; }
+
+        .input {
+            padding-left: 5px;
+            background: #000000;
+            color: #ffffff;
         }
     </style>
     <body style="font-family: 'Source Code Pro', monospace; margin: 0px">
@@ -110,19 +121,18 @@
         </div>
         <div>
             <!-- <div style="display: flex; flex-direction: row;">
-                <div id="output" style="padding: 5px; white-space: pre; flex: 1; text-align:right;"></div>
-                <div id="input" contenteditable="plaintext-only" style="padding: 5px; white-space: pre; min-height: 60px; flex: 1;"></div>
+                <div id="calculator-result" class="text-output" style="padding: 5px; white-space: pre; flex: 1; text-align:right;"></div>
+                <div id="calculator-input" contenteditable="plaintext-only" style="padding: 5px; white-space: pre; min-height: 60px; flex: 1;"></div>
             </div> -->
             <div style="display: flex; flex-direction: row">
-                <div id="line-numbers" style="padding: 5px; white-space: pre"></div>
+                <div id="line-numbers" class="code med" style="padding: 5px;"></div>
                 <textarea
-                    id="input"
-                    contenteditable="plaintext-only"
+                    id="calculator-input"
+                    class="input code med"
                     style="padding: 5px; white-space: pre; min-height: 60px; flex: 1"
                 ></textarea>
             </div>
-            <div id="output"></div>
-
+            <div id="stdout"></div>
             <div class="not-zen" style="margin-top: 50px; padding: 10px">
                 <button id="zen-mode" style="width: unset">Remove clutter</button>
             </div>
@@ -160,6 +170,10 @@
         const VT_FUNCTION = debug ? "VT_FUNCTION" : 4;
         const VT_STRING = debug ? "VT_STRING" : 5;
 
+        const RT_PRINT = "print";
+        const RT_GRAPH = "graph";
+        const RT_PLOT = "plot";
+
         function makeErr(ctx, info) {
             const err = {
                 vt: VT_ERROR,
@@ -187,12 +201,17 @@
             return makeNumber(parseFloat(x.text));
         }
 
+        const NULL_OBJ = { vt: VT_NULL, astNode: null };
+        function makeNull() {
+            return NULL_OBJ;
+        }
+
         function makeNumber(n) {
-            return { vt: VT_NUMBER, val: n};
+            return { vt: VT_NUMBER, val: n, astNode: null};
         }
 
         function makeString(s) {
-            return { vt: VT_STRING, val: s };
+            return { vt: VT_STRING, val: s, astNode: null };
         }
 
         const builtInConstantsMap = {
@@ -396,22 +415,22 @@
 
         const unaryOpsMap = {
             [VT_NUMBER]: {
-                "+": (x) => x,
-                "-": (x) => ({ vt: x.vt, val: -x.val }),
+                "+": (ctx, x) => x,
+                "-": (ctx, x) => ({ vt: x.vt, val: -x.val }),
             },
             [VT_TENSOR]: {
-                "-": (x) => {
+                "-": (ctx, x) => {
                     const tensor = copyTensor(x);
                     for(let i = 0; i < tensor.data.length; i++) {
                         tensor.data[i] = -tensor.data[i];
                     }
                     return tensor;
                 },
-                "~": (x) => {
+                "~": (ctx, x) => {
                     if (x.shape.length > 2) {
                         // I don't have the math knowledge required to make this work for tensors,
                         // nor do I have a use case beyond matrices, so I shouldn't waste my time on getting this to work
-                        return makeErr(ctx, `transposing is only defined on matrices and vectors at the moment`);
+                        return makeErr(ctx, `transposing is only defined on matrices and vectors at the moment (tensors with 1 or 2 shape components)`);
                     }
 
                     const tensor = copyTensor(x);
@@ -450,7 +469,7 @@
                 return makeErr(ctx, `unary op ${x.op.text} can't be used on ${vtToString(val.vt)}`);
             }
 
-            return func(val);
+            return func(ctx, val);
         }
 
         function getVals(args) {
@@ -458,7 +477,16 @@
         }
 
         // imagine building an interpreted language in an interpreted language
-        // also we need a way to represent infinite args. our tensor function can actually take in infinite number args
+
+        // these args are nowhere near enough to capture the way arguments are specified into these functions.
+        // Some of these builtin math functions take two floats, I was just not bothered to update the args arrays.
+        // Some of the methods also take variadic arguments.
+        // Some of the methods also want a list of things, followed by some normal arguments. 
+        //      e.g graph(...listOfFunctions, domainStart, domainEnd);
+        // Some of the methods also can take an 'any' type, or some particular combination of types for an argument.
+        // we basically need to implement a little regex-like function to validate the input of types given some validation object. (that is, if we don't want to manually write type validation code per-function)
+        // this is not a priority at the moment, so the argument input checking will be lacking for now (and probably forever, until I make it in Rust)
+        // now that I think about it, this language is a super good use-case for Rust+web-assembly. I will consider it
         const builtinFunctionsMap = {
             abs: {
                 args: [{ vt: VT_NUMBER }],
@@ -586,7 +614,6 @@
             },
 
             // Non-wrapping builtins
-
             T: {
                 args: [{ vt: VT_NUMBER }],
                 fn: (ctx, ...args) => ({
@@ -623,6 +650,42 @@
                         sum += a.data[i] + b.data[i];
                     }
                     return makeNumber(sum);
+                }
+            },
+
+            // output functions
+            print: {
+                args: [],
+                fn: (ctx, thing, title) => {
+                    ctx.results.push({
+                        rt: RT_PRINT,
+                        val: thing,
+                        title: (title && title.val) || (thing.astNode && thing.astNode.t === T_IDENT && thing.astNode.text),
+                    });
+
+                    return makeNull();
+                }
+            },
+            graph: {
+                args: [],
+                fn: (ctx, ...args) => {
+                    let functions = [];
+                    let i = 0;
+                    for(;i < args.length; i++) {
+                        if (args[i].vt !== VT_FUNCTION) {
+                            break;
+                        }
+                        functions.push(args[i]);
+                    }
+
+                    if (functions.length === 0) {
+                        return makeErr(ctx, `this function requires arguments like (...functions, domainStart, domainEnd), no functions were specified`);
+                    }
+                    if (i !== args.length - 2) {
+                        return makeErr(ctx, `this function requires arguments like (...functions, domainStart, domainEnd), startDomain and endDomain were not specified`);
+                    }
+
+                    // TODO: actually graph things
                 }
             }
         };
@@ -1045,7 +1108,7 @@
             // it is a custom user defined function.
             // we will just return the final value it calculated.
             // (this could simply by a variable on it's own on a single line, so no problems here)
-            let lastStatementResult = { vt: VT_NULL };
+            let lastStatementResult = makeNull();
 
             // evaluate function
             for(let i = 0; i < x.body.length; i++) {
@@ -1086,7 +1149,7 @@
                 return makeErr(ctx, `you may have an infinite loop in your program - they are very easy to run into, which is why I have a limiter of 1,000,000 iterations per loop for now`);
             }
 
-            return { vt: VT_NULL };
+            return makeNull();
         }
 
         function evaluateString(x) {
@@ -1148,6 +1211,7 @@
                     break;
             }
 
+            value.astNode = x;
             return value;
         }
 
@@ -1216,27 +1280,24 @@
             const ctx = {
                 variables: new ScopeStack(),
                 errors: [],
+                results: [],
+                programResult: makeNull(),
                 text: text
             };
 
-            if (program.error) {
-                makeErr(ctx, program.error);
+            if (program.parseError) {
+                makeErr(ctx, program.parseError);
             }
 
+            for(let i = 0; i < program.expressions.length; i++) {
+                ctx.programResult = evaluateExpression(ctx, program.expressions[i]);
+                if (ctx.programResult === VT_ERROR) {
+                    break;
+                }
+            }
             try {
-                ctx.results = program.expressions.map((line) => {
-                    let val = {
-                        ...evaluateExpression(ctx, line)
-                    };
-    
-                    val.show = line.show;
-                    val.lineNumber = line.lineNumber;
-                    return val;
-                });
             } catch(err) {
-                ctx.results = [
-                    makeErr(ctx, `A Javascript error occurred while evaluating your program: ${err}`)
-                ];
+                // ctx.programResult = makeErr(ctx, `A Javascript error occurred while evaluating your program: ${err}`);
             }
 
             return ctx;
@@ -1275,7 +1336,13 @@
         }
 
         function valueToString(v) {
+            if(!v) {
+                return "{}";
+            }
+
             switch (v.vt) {
+                case VT_NULL:
+                    return "{}";
                 case VT_TENSOR:
                     return tensorToString(v).replace("\n", "\n\t");
                 case VT_NUMBER:
@@ -1293,7 +1360,7 @@
             let type = vtToString(v.vt);
             let str = valueToString(v);
 
-            return `[${type}] \n${str}`;
+            return `[${type}] ${str}`;
         }
 
         // ---- parser
@@ -2127,7 +2194,9 @@
 
             const root = {
                 expressions: lines,
-                error: null
+
+                // most error checking/validating is done in the evaluate step, so this has very limited use
+                parseError: null
             };
 
             if (ctx.pos !== text.length) {
@@ -2137,7 +2206,7 @@
                 if (contextText.length > 50) {
                     contextText = contextText.substring(0, 50) + "...";
                 }
-                root.error = `Couldn't read line ${lines.length} pos ${linePos}: "${contextText}"`;
+                root.parseError = `Couldn't read line ${lines.length} pos ${linePos}: "${contextText}"`;
             }
 
             return root;
@@ -2186,13 +2255,14 @@
 
         // ---- actual website code
 
-        const input = document.getElementById("input");
+        const input = document.getElementById("calculator-input");
         const showAstCheckbox = document.getElementById("show-ast-checkbox");
         const showResultCheckbox = document.getElementById("show-result-checkbox");
         const showAllTestcasesCheckbox = document.getElementById("show-all-tests");
         const showAstOutput = document.getElementById("ast-output");
         const showResultOutput = document.getElementById("result-output");
         const testcaseContainer = document.getElementById("testcases");
+        const stdout = document.getElementById("stdout");
 
         // HTML doesn't like tabs, we need this additional code to be able to insert tabs.
         input.addEventListener("keydown", (e) => {
@@ -2242,60 +2312,63 @@
                 showResultOutput.setAttribute("hidden", true);
             }
 
-            // compile and interpret code
-
+            // parse code
             const text = input.value;
             const ast = parseProgram(text);
-            const result = evaluateProgram(ast, text);
-
-            const getClass = (v) => {
-                if (v.vt == VT_ERROR) {
-                    return "error";
-                }
-
-                return "";
-            };
-
-            let resultsTextOutput = [];
-
-            // // code to align results with the line the expression appeared on.
-            // if (result.results.length > 0) {
-            //     let currentResultIndex = 0;
-            //     for(let ln = 0; ln <= result.results[result.results.length - 1].lineNumber; ln++) {
-            //         const v = result.results[currentResultIndex];
-            //         if (v.lineNumber === ln) {
-            //             resultsTextOutput.push(v.show ? `[${vtToString(v.vt)}]: ${v.val}` : "");
-            //             currentResultIndex++;
-            //             console.log(currentResultIndex)
-            //         } else {
-            //             console.log(currentResultIndex)
-            //             resultsTextOutput.push("");
-            //         }
-            //     }
-            // }
-            const lastResult = result.results[result.results.length - 1];
-            resultsTextOutput = lastResult?.show ? thingToString(lastResult) : "";
-
-            const errorsTextOutput =
-                result.errors.length === 0
-                    ? ""
-                    : `<pre>Last ${result.errors.length} errors:</pre>` +
-                      result.errors
-                          .map((v) => {
-                              return `<pre class="error">${thingToString(v)}</pre>`;
-                          })
-                          .join("");
-
-            // print result(s)
-            document.getElementById("output").innerHTML =
-                errorsTextOutput.length > 0 ? errorsTextOutput : resultsTextOutput;
-
-            // debug output
-
             showAstOutput.innerText = JSON.stringify(debugFormatAST(ast, text), null, 4);
+
+            // run code
+            const result = evaluateProgram(ast, text);
             showResultOutput.innerText = JSON.stringify(result, null, 4);
+            renderOutputs(result)
         }
 
+        const hackySanitizationDiv = document.createElement("DIV");
+        function santizeHTML(html) {
+            hackySanitizationDiv.innerText = text;
+            let val = hackySanitizationDiv.innerText;
+            hackySanitizationDiv.innerText = "";
+            return val;
+        }
+
+        function renderOutputs(programResult) {
+            function p(innerHTML, className = "", el="p") {
+                return `<${el} class="p-5 m-0 code ${className}">${innerHTML}</${el}>`;
+            };
+
+            function print(res, title) {
+                return (
+                    `<div class="flex-row">` + 
+                        (title ? `<p class="p-5 m-0"><b>${title}: </b></p>` : "") + 
+                        p(thingToString(res), res.vt === VT_ERROR ? "error" : "") +
+                    "</div>"
+                );
+            }
+
+            const outputs = [];
+            if (programResult.programResult.vt !== VT_NULL) {
+                outputs.push(print(programResult.programResult, "Calculation result"));
+            }
+
+            // process and show all results, like print statements, graphs, etc.
+            // we do it like this, so that we can still run unit tests without running side-effects
+            if (programResult.results.length > 0) {
+                for(let i = 0; i < programResult.results.length; i++) {
+                    const result = programResult.results[i];
+                    if (result.rt === RT_PRINT) {
+                        outputs.push(print(result.val, result.title || `result ${i}`));
+                    } else if (result.rt === RT_PLOT) {
+                        outputs.push(p("TODO"));
+                    } else if (result.rt === RT_GRAPH) {
+                        outputs.push(p("TODO"));
+                    } else {
+                        outputs.push(p("unknown result type " + result.rt));
+                    }
+                }
+            }
+
+            stdout.innerHTML = outputs.join("\n");
+        }
 
         // ---- add testcases,
 
@@ -2513,48 +2586,48 @@ x = y * x + x`,
                 <tr><th>Input</th><th>Output</th></tr>
             ` +
                 tests.map((testcase, i) => {
-                        let output = "", isPassing = false;
+                    let output = "", isPassing = false;
 
-                        try {
-                            const text = testcase.input;
-                            const ast = parseProgram(text);
-                            const results = evaluateProgram(ast, text).results;
-                            output = valueToString(results[results.length - 1]);
-                            isPassing = testcase.expected.replace(/\s/g, "") === output.replace(/\s/g, "");
-                        } catch(e) {
-                            output = "Exception";
-                            isPassing = false;
-                        }
+                    try {
+                        const text = testcase.input;
+                        const ast = parseProgram(text);
+                        const results = evaluateProgram(ast, text);
+                        output = valueToString(results.programResult);
+                        isPassing = testcase.expected.replace(/\s/g, "") === output.replace(/\s/g, "");
+                    } catch(e) {
+                        output = "Exception";
+                        isPassing = false;
+                    }
 
-                        if(isPassing){
-                            passes++;
-                        } else {
-                            fails++;
-                        }
+                    if(isPassing){
+                        passes++;
+                    } else {
+                        fails++;
+                    }
 
-                        return `
-                            <tr>
-                                <td class="testcase-button" data-testcase-id="${i}">
-                                    <h4>${testcase.name}</h4>
-                                    <p>
-                                        ${testcase.input}
-                                    </p>
-                                </td>
-                                <td class="${isPassing ? "passing" : "failing"}" title="${isPassing ? "this testcase is passing" : "this testcase is failing"}">
-                                    ${
-                                        isPassing ? truncate(output, 70) : `
-                                            <h4>Got:</h4>
-                                            <p>
-                                                ${output}
-                                            </p>
-                                            <h4>Expected:</h4>
-                                            <p>
-                                                ${testcase.expected}
-                                            </p>
-                                        `
-                                    }
-                                </td>
-                            </tr>`;
+                    return `
+                        <tr>
+                            <td class="testcase-button" data-testcase-id="${i}">
+                                <h4>${testcase.name}</h4>
+                                <p>
+                                    ${testcase.input}
+                                </p>
+                            </td>
+                            <td class="${isPassing ? "passing" : "failing"}" title="${isPassing ? "this testcase is passing" : "this testcase is failing"}">
+                                ${
+                                    isPassing ? truncate(output, 70) : `
+                                        <h4>Got:</h4>
+                                        <p>
+                                            ${output}
+                                        </p>
+                                        <h4>Expected:</h4>
+                                        <p>
+                                            ${testcase.expected}
+                                        </p>
+                                    `
+                                }
+                            </td>
+                        </tr>`;
                     })
                     .join("\n");
 
@@ -2579,12 +2652,7 @@ x = y * x + x`,
         }
 
         // ---- set value
-        input.value = `
-A := [[1,  2,  3], 
-	 [4,  5,  6]];
-
-A ** [1,0, 0]
-`;
+        input.value = `print(1)`;
         rerender();
         rerenderTests();
 
