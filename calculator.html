@@ -2324,30 +2324,36 @@
         }
 
         const hackySanitizationDiv = document.createElement("DIV");
-        function santizeHTML(html) {
-            hackySanitizationDiv.innerText = text;
-            let val = hackySanitizationDiv.innerText;
+        function sanitizeHTML(html) {
+            hackySanitizationDiv.innerText = html;
+            let val = hackySanitizationDiv.innerHTML;
             hackySanitizationDiv.innerText = "";
             return val;
         }
 
         function renderOutputs(programResult) {
             function p(innerHTML, className = "", el="p") {
-                return `<${el} class="p-5 m-0 code ${className}">${innerHTML}</${el}>`;
+                return `<${el} class="p-5 m-0 code ${className}">${sanitizeHTML(innerHTML)}</${el}>`;
             };
 
-            function print(res, title) {
+            function wrapInTitle(result, i, innerHtml) {
                 return (
                     `<div class="flex-row">` + 
-                        (title ? `<p class="p-5 m-0"><b>${title}: </b></p>` : "") + 
-                        p(thingToString(res), res.vt === VT_ERROR ? "error" : "") +
+                        (result.title ? `<p class="p-5 m-0"><b>${result.title || `result ${i}`}: </b></p>` : "") + 
+                        innerHtml +
                     "</div>"
+                );
+            }
+
+            function print(result, i) {
+                return wrapInTitle(
+                    result, i, p(thingToString(result.val), result.val.vt === VT_ERROR ? "error" : "")
                 );
             }
 
             const outputs = [];
             if (programResult.programResult.vt !== VT_NULL) {
-                outputs.push(print(programResult.programResult, "Calculation result"));
+                outputs.push(print({ title: "Calculation result", val: programResult.programResult }));
             }
 
             // process and show all results, like print statements, graphs, etc.
@@ -2356,9 +2362,9 @@
                 for(let i = 0; i < programResult.results.length; i++) {
                     const result = programResult.results[i];
                     if (result.rt === RT_PRINT) {
-                        outputs.push(print(result.val, result.title || `result ${i}`));
+                        outputs.push(print(result, i));
                     } else if (result.rt === RT_PLOT) {
-                        outputs.push(p("TODO"));
+                        outputs.push(graph(result));
                     } else if (result.rt === RT_GRAPH) {
                         outputs.push(p("TODO"));
                     } else {
@@ -2373,6 +2379,11 @@
         // ---- add testcases,
 
         const testcases = [
+            {
+                name: "XSS attack",
+                input: `"<p onclick='alert(\\"efaf\\")'>dasdas</p>"`,
+                expected: `<p onclick='alert("efaf")'>dasdas</p>`,
+            },
             {
                 name: "typical math expression",
                 input: "1 + 2 * 3 + 4^(sin(PI/2)*2)",
@@ -2608,21 +2619,21 @@ x = y * x + x`,
                     return `
                         <tr>
                             <td class="testcase-button" data-testcase-id="${i}">
-                                <h4>${testcase.name}</h4>
+                                <h4>${sanitizeHTML(testcase.name)}</h4>
                                 <p>
-                                    ${testcase.input}
+                                    ${sanitizeHTML(testcase.input)}
                                 </p>
                             </td>
                             <td class="${isPassing ? "passing" : "failing"}" title="${isPassing ? "this testcase is passing" : "this testcase is failing"}">
                                 ${
-                                    isPassing ? truncate(output, 70) : `
+                                    isPassing ? truncate(sanitizeHTML(output), 70) : `
                                         <h4>Got:</h4>
                                         <p>
-                                            ${output}
+                                            ${sanitizeHTML(output)}
                                         </p>
                                         <h4>Expected:</h4>
                                         <p>
-                                            ${testcase.expected}
+                                            ${sanitizeHTML(testcase.expected)}
                                         </p>
                                     `
                                 }
