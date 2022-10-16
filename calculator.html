@@ -104,6 +104,10 @@
             background: #000000;
             color: #ffffff;
         }
+
+        .graph-rect {
+            cursor: crosshair;
+        }
     </style>
     <body style="font-family: 'Source Code Pro', monospace; margin: 0px">
         <div style="padding: 10px" class="not-zen">
@@ -113,9 +117,12 @@
                 <!-- Not intended to be an actual calculator. It is practice for creating a parser to making a
                 programming language that I have been thinking about for a while now. This won't be the actual language, nor
                 will it be complete, but I will try to add some cool features. I don't intend to spend any
-                more than around 4 days on this site. (actually I ended up spending 2-3 weeks on it) -->
+                more than around 4 days on this site. (actually I ended up spending 2-3 weeks on it, and I will probably keep adding to it
+                if I actually end up using it) -->
                 <p>
-                    Type something into the box below. Or, click on one of the examples in the table below.
+                    This was originally supposed to be a simple calculator that only supported simple +-*/ operations and brackets, but I
+                    got a bit carried away and now it's a programming language???
+                    Type something into the box, or click on one of the examples in the table below.
                 </p>
             </div>
         </div>
@@ -613,7 +620,8 @@
                 fn: (ctx, ...args) => makeNumber(Math.trunc(getVals(args)))
             },
 
-            // Non-wrapping builtins
+            // ---- builtins I had to write myself
+
             T: {
                 args: [{ vt: VT_NUMBER }],
                 fn: (ctx, ...args) => ({
@@ -631,6 +639,11 @@
                     }
                     return tensor;
                 }
+            },
+
+            lerp: {
+                args: [{ vt: VT_NUMBER }],
+                fn: (ctx, start, end, t) => makeNumber(lerp(start, end, t))
             },
 
             // prints a number of minutes as hours and minutes. 
@@ -662,7 +675,6 @@
                         val: thing,
                         title: (title && title.val) || (thing.astNode && thing.astNode.t === T_IDENT && thing.astNode.text),
                     });
-
                     return makeNull();
                 }
             },
@@ -672,24 +684,34 @@
                     let functions = [];
                     let i = 0;
                     for(;i < args.length; i++) {
-                        if (args[i].vt !== VT_FUNCTION) {
-                            break;
-                        }
+                        if (args[i].vt !== VT_FUNCTION) break;
+                        if (args[i].args.length !== 1) return makeErr(ctx, `a function can only have 1 argument to be graphable, for now at least`);
                         functions.push(args[i]);
                     }
 
                     if (functions.length === 0) {
-                        return makeErr(ctx, `this function requires arguments like (...functions, domainStart, domainEnd), no functions were specified`);
+                        return makeErr(ctx, `arguments to graph are like ...functions, domainStart, domainEnd`);
                     }
                     if (i !== args.length - 2) {
-                        return makeErr(ctx, `this function requires arguments like (...functions, domainStart, domainEnd), startDomain and endDomain were not specified`);
+                        return makeErr(ctx, `arguments to graph are like ...functions, domainStart, domainEnd`);
                     }
 
-                    // TODO: actually graph things
+                    ctx.results.push({
+                        rt: RT_GRAPH,
+                        functions: functions,
+                        start: args[i],
+                        end: args[i+1]
+                    });
+                    return makeNull();
                 }
             }
         };
         const builtinFunctions = Object.keys(builtinFunctionsMap);
+
+
+        function evaluateUserDefFunction(ctx, func) {
+            return evaluateBlock(ctx, func.body);;
+        }
 
         function evaluateUserDefFunctionCall(ctx, x, name) {
             const func = ctx.variables.get(name);
@@ -714,7 +736,7 @@
                 ctx.variables.set(ctx, argumentNames[i], evaluateExpression(ctx, argumentValues[i]), true);
             }
 
-            const val = evaluateBlock(ctx, func.body, func.args, x.args);;
+            const val = evaluateBlock(ctx, func.body);;
 
 
             ctx.variables.popStackFrame();
@@ -768,14 +790,16 @@
                 body: [x.rhs]
             };
 
-            ctx.variables.set(ctx, varName, {
+            const func = {
                 vt: VT_FUNCTION,
                 args: argNames,
                 body: body,
-                text: nodeText(ctx, x)
-            }, x.isDeclaration);
+                text: nodeText(ctx, x),
+                name: varName,
+            };
+            ctx.variables.set(ctx, varName, func, x.isDeclaration);
 
-            return null;
+            return func;
         }
 
         // TODO: split up function to variable assignment, indexation assignment and function assignment
@@ -1211,7 +1235,10 @@
                     break;
             }
 
-            value.astNode = x;
+            if (typeof value === "object" && value !== null) {
+                value.astNode = x;
+            }
+
             return value;
         }
 
@@ -1288,7 +1315,7 @@
             if (program.parseError) {
                 makeErr(ctx, program.parseError);
             }
-
+            
             for(let i = 0; i < program.expressions.length; i++) {
                 ctx.programResult = evaluateExpression(ctx, program.expressions[i]);
                 if (ctx.programResult === VT_ERROR) {
@@ -1297,7 +1324,7 @@
             }
             try {
             } catch(err) {
-                // ctx.programResult = makeErr(ctx, `A Javascript error occurred while evaluating your program: ${err}`);
+                ctx.programResult = makeErr(ctx, `A Javascript error occurred while evaluating your program: ${err}`);
             }
 
             return ctx;
@@ -1745,7 +1772,7 @@
                     text,
                     ctx,
                     args,
-                    parseExpressionTopLevel,
+                    parseAssignment,
                     (t, pos) => hasText(t, pos, ","),
                     (t, pos) => hasText(t, pos, ")")
                 )
@@ -2222,12 +2249,6 @@
                     return "undefined";
                 }
 
-                if (typeof node.start === "number" && typeof node.end === "number") {
-                    // node.val = evaluateProgram(node.text);
-                    delete node.start;
-                    delete node.end;
-                }
-
                 const limit = 10;
                 if (
                     typeof node.length === "number" &&
@@ -2312,13 +2333,13 @@
                 showResultOutput.setAttribute("hidden", true);
             }
 
-            // parse code
+            // parse and run code
             const text = input.value;
             const ast = parseProgram(text);
-            showAstOutput.innerText = JSON.stringify(debugFormatAST(ast, text), null, 4);
-
-            // run code
             const result = evaluateProgram(ast, text);
+
+            // debugFormatAST damages the AST so wn have to run it after both parsing and evaluating the program
+            showAstOutput.innerText = JSON.stringify(debugFormatAST(ast, text), null, 4);
             showResultOutput.innerText = JSON.stringify(result, null, 4);
             renderOutputs(result)
         }
@@ -2331,49 +2352,200 @@
             return val;
         }
 
-        function renderOutputs(programResult) {
+        function renderOutputs(programCtx) {
             function p(innerHTML, className = "", el="p") {
                 return `<${el} class="p-5 m-0 code ${className}">${sanitizeHTML(innerHTML)}</${el}>`;
             };
 
-            function wrapInTitle(result, i, innerHtml) {
+            function wrapInTitle(title, innerHtml) {
                 return (
                     `<div class="flex-row">` + 
-                        (result.title ? `<p class="p-5 m-0"><b>${result.title || `result ${i}`}: </b></p>` : "") + 
+                        (title ? `<p class="p-5 m-0"><b>${title}: </b></p>` : "") + 
                         innerHtml +
                     "</div>"
                 );
             }
 
-            function print(result, i) {
-                return wrapInTitle(
-                    result, i, p(thingToString(result.val), result.val.vt === VT_ERROR ? "error" : "")
+            function print(stdout, result, i) {
+                stdout.innerHTML += wrapInTitle(
+                    result.title || `result ${i}`, 
+                    p(thingToString(result.val), result.val.vt === VT_ERROR ? "error" : "")
                 );
             }
 
+            function plot(stdout, xValues, yValues) {
+                // TODO: move code from function graph into here
+            }
+
+            function graph(stdout, result, i) {
+                if (result.val && result.val.vt === VT_ERROR) {
+                    return print(stdout, result, i);
+                }
+
+                const domainStart = result.start.val;
+                const domainEnd = result.end.val;
+
+                const colors = []
+                
+                const paths = [], texts = [];
+
+                const padding = 50;
+                const w = 1000;
+                const h = 500;
+                const n = Math.floor(w);
+                const points = Array(n * result.functions.length);
+                
+                
+
+                // find graph bounds by evaluating functions
+                let min = 0, max = 0;
+                for(const fIndex in result.functions) {
+                    const func = result.functions[fIndex];
+
+
+                    programCtx.variables.pushStackFrame();
+                    const fRef = makeNumber(0);
+                    programCtx.variables.set(programCtx, func.args[0], fRef, true);
+
+                    for(let i = 0; i < n; i++) {
+                        const tX = (i / (n - 1));
+
+                        fRef.val = lerp(domainStart, domainEnd, tX);
+                        const num = evaluateUserDefFunction(programCtx, func);
+                        const domainY = num.val;
+                        
+                        points[i + fIndex*n] = domainY;
+                    }
+
+                    programCtx.variables.popStackFrame();
+                    
+                    if (fIndex === 0) {
+                        min = points[0];
+                        max = points[0];
+                    }
+
+                    for(let i = 0; i < n; i++) {
+                        min = points[i + fIndex*n] < min ? points[i + fIndex*n] : min;
+                        max = points[i + fIndex*n] > max ? points[i + fIndex*n] : max;
+                    }
+                }
+
+                const leftPad = 100, bottomPad = 17, topPad = 5;
+
+                const axesOverhang = 10;
+                // draw graph axes
+                paths.push(
+                    { p: `M ${leftPad - axesOverhang} ${h - bottomPad} L ${w} ${h - bottomPad}`, s: `black`, w: 1 },
+                    { p: `M ${leftPad} ${h - bottomPad + axesOverhang} L ${leftPad} ${topPad}`, s: `black`, w: 1 },
+                    { p: `M ${leftPad - axesOverhang} ${topPad} L ${w} ${topPad}`, s: `grey`, w: 1 },
+                    { p: `M ${w} ${h - bottomPad + axesOverhang} L ${w} ${topPad}`, s: `grey`, w: 1 },
+                );
+
+                texts.push (
+                    { t: `${min.toFixed(2)}`, x: leftPad - axesOverhang, y: h - bottomPad - axesOverhang, a: "end" },
+                    { t: `${max.toFixed(2)}`, x: leftPad - axesOverhang, y: bottomPad + topPad, a: "end" },
+
+                    { t: `${domainStart.toFixed(2)}`, x: leftPad + axesOverhang, y: h, a: "start" },
+                    { t: `${domainEnd.toFixed(2)}`, x: w - axesOverhang, y: h, a: "end" },
+                );
+
+
+                // draw graph
+                for(const fIndex in result.functions) {
+                    const func = result.functions[fIndex];
+                    const path = [];
+                    for(let i = 0; i < n; i++) {
+                        const tX = (i / (n - 1));
+                        let x = leftPad + tX * (w - leftPad);
+                        let y = topPad + (h - bottomPad - topPad) * (1 - (points[i + fIndex*n] - min) / (max - min));
+
+                        if (i === 0) {
+                            path.push("M" + x + " " + y);
+                        } else {
+                            path.push("L" + x + " " + y);
+                        }
+                    }
+
+                    paths.push({ p: path.join(" ") , s: 'black', w: 1 });
+                }
+
+                stdout.innerHTML += wrapInTitle(
+                    "graph of " + result.functions.map(f => f.name).join(", "),
+                    `<svg id="graph-${i}" class="p-5 graph" style="width:${w}px;height:${h}px;">
+                        ${paths.map(p => `<path d="${p.p}" stroke="${p.s}" stroke-width="${p.w}px" fill="none"></path>`).join("\n")}
+                        ${texts.map(t => `<text text-anchor="${t.a}" x="${t.x}" y=${t.y} style="font-size:0.8em">${t.t}</text>`).join("\n")}
+                        
+                        <text class="mouseover mouse-pos-text" text-anchor="start" style="font-size:0.8em;"></text>
+                        <path class="mouseover crosshair-path-1" stroke="grey" stroke-width="1"/>
+                        <path class="mouseover crosshair-path-2" stroke="grey" stroke-width="1"/>
+                        <rect x="${leftPad}" y="${topPad}" width="${w}" height="${h - bottomPad - topPad}" fill="transparent" class="graph-rect"></rect>
+                    </svg>`
+                ) + `<div class="code indent-3"><b>Bounds: </b>${domainStart} < x < ${domainEnd}\t | \t${min} < y < ${max}</div>`;
+
+                setTimeout(() => {
+                    const graph = document.getElementById("graph-" + i);
+                    const mousePosText = graph.querySelector(".mouse-pos-text");
+                    const graphRect = graph.querySelector(".graph-rect");
+                    const crosshairPath1 = graph.querySelector(".crosshair-path-1");
+                    const crosshairPath2 = graph.querySelector(".crosshair-path-2");
+
+                    const mouseOverElements = graph.querySelectorAll(".mouseover");
+                    graphRect.addEventListener("mousemove", (e) => {
+                        const scrollAmnt = document.documentElement.scrollTop || document.body.scrollTop;
+                        const rect = graphRect.getBoundingClientRect();
+                        const rect2 = graph.getBoundingClientRect();
+
+                        const tX = event.pageX - rect.left;
+                        const tY = event.pageY - rect.top - scrollAmnt;
+
+                        const domainX = lerp(domainStart, domainEnd, tX / w).toFixed(3);
+                        const domainY = lerp(max, min, tY / (h - bottomPad - topPad)).toFixed(3);
+
+                        const viewX = event.pageX - rect2.left - 5;
+                        const viewY = event.pageY - rect2.top - 5 - scrollAmnt;
+
+                        mousePosText.innerHTML = domainX + ", " + domainY;
+                        mousePosText.setAttribute("x", viewX + axesOverhang);
+                        mousePosText.setAttribute("y", viewY - axesOverhang);
+                        crosshairPath1.setAttribute("d", `M ${leftPad} ${viewY} L ${w} ${viewY}`)
+                        crosshairPath2.setAttribute("d", `M ${viewX} ${topPad} L ${viewX} ${h - bottomPad}`)
+                    });
+
+                    graphRect.addEventListener("mouseenter", (e) => {
+                        mouseOverElements.forEach(e => e.removeAttribute("hidden"));
+                    });
+
+                    graphRect.addEventListener("mouseleave", (e) => {
+                        mouseOverElements.forEach(e => e.setAttribute("hidden", true));
+                    });
+                }, 5);
+            }
+
             const outputs = [];
-            if (programResult.programResult.vt !== VT_NULL) {
-                outputs.push(print({ title: "Calculation result", val: programResult.programResult }));
+            stdout.innerHTML = "";
+
+            if (programCtx.programResult.vt !== VT_NULL) {
+                outputs.push(print(stdout, { title: "Calculation result", val: programCtx.programResult }));
             }
 
             // process and show all results, like print statements, graphs, etc.
             // we do it like this, so that we can still run unit tests without running side-effects
-            if (programResult.results.length > 0) {
-                for(let i = 0; i < programResult.results.length; i++) {
-                    const result = programResult.results[i];
+            if (programCtx.results.length > 0) {
+                for(let i = 0; i < programCtx.results.length; i++) {
+                    const result = programCtx.results[i];
                     if (result.rt === RT_PRINT) {
-                        outputs.push(print(result, i));
+                        print(stdout, result, i);
                     } else if (result.rt === RT_PLOT) {
-                        outputs.push(graph(result));
+                        p("TODO");
                     } else if (result.rt === RT_GRAPH) {
-                        outputs.push(p("TODO"));
+                        graph(stdout, result, i);
                     } else {
-                        outputs.push(p("unknown result type " + result.rt));
+                        p("unknown result type " + result.rt);
                     }
+
+                    stdout.innerHTML += "\n";
                 }
             }
-
-            stdout.innerHTML = outputs.join("\n");
         }
 
         // ---- add testcases,
@@ -2395,6 +2567,20 @@
                 input: "((1 + 2 + 3 >= 1 + 2 + 3) == (1 + 2 + 3 > 1 + 2 + 3)) == 0",
                 expected: "1",
                 alwaysShow: true
+            },
+            {
+                name: "graphing",
+                input: `
+// this feature is unpolished and in a very early stage (like most things here, but more-so).
+// call the graph function with any number of functions, followed by a start and end value to graph it
+graph(
+	f(x) := sin(8 * x), 
+	g(x) := cos(x), 
+	0, 2*PI
+)`,
+                expected: "{}",
+                alwaysShow: true,
+                isVisualTest: true
             },
             {
                 name: "matrix multiplication",
@@ -2585,9 +2771,16 @@ x = y * x + x`,
             return t;
         }
 
+        function lerp(a, b, t) {
+            t = t < 0 ? 0 : t;
+            t = t > 1 ? 1 : t;
+
+            return a + (b - a) * t;
+        }
+
         function rerenderTests() {
             const onlyShowInteresting = !showAllTestcasesCheckbox.checked;
-            let passes = 0, fails = 0;
+            let passes = 0, fails = 0, manual = 0;
 
             let tests = testcases
                     .filter((testcase) => onlyShowInteresting ? testcase.alwaysShow : true);
@@ -2610,10 +2803,14 @@ x = y * x + x`,
                         isPassing = false;
                     }
 
-                    if(isPassing){
-                        passes++;
+                    if (!testcase.isVisualTest) {
+                        if(isPassing){
+                            passes++;
+                        } else {
+                            fails++;
+                        }
                     } else {
-                        fails++;
+                        manual++;
                     }
 
                     return `
@@ -2624,7 +2821,7 @@ x = y * x + x`,
                                     ${sanitizeHTML(testcase.input)}
                                 </p>
                             </td>
-                            <td class="${isPassing ? "passing" : "failing"}" title="${isPassing ? "this testcase is passing" : "this testcase is failing"}">
+                            <td class="${testcase.isVisualTest ? "" : isPassing ? "passing" : "failing"}" title="${testcase.isVisualTest ? "this test must be manually inspected" : isPassing ? "this testcase is passing" : "this testcase is failing"}">
                                 ${
                                     isPassing ? truncate(sanitizeHTML(output), 70) : `
                                         <h4>Got:</h4>
@@ -2645,7 +2842,7 @@ x = y * x + x`,
             if(!onlyShowInteresting) {
                 testcaseTableHTML = `
                     <p>
-                        Passing: ${passes}, Failing: ${fails};
+                        Passing: ${passes}, Failing: ${fails}, Requiring manual inspection: ${manual};
                     </p>
                 ` 
                     + testcaseTableHTML;
@@ -2663,7 +2860,11 @@ x = y * x + x`,
         }
 
         // ---- set value
-        input.value = `print(1)`;
+        input.value = `
+arr := [1,2,3,4,5,3,2,3,4,3,2,2,33,4];
+s(x) := arr[floor(x)]
+
+s(5)`;
         rerender();
         rerenderTests();
 
