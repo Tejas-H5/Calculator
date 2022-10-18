@@ -8,9 +8,17 @@
     </head>
     <!-- // ---- styles -->
     <style>
+        .relative {
+            position: relative;
+        }
+
         .flex-row {
             display: flex;
             flex-direction: row;
+        }
+
+        .label {
+            max-width: 200px;
         }
 
         .testcase-button:hover {
@@ -105,6 +113,12 @@
             color: #ffffff;
         }
 
+        .input-pre, .input {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
         .graph-rect {
             cursor: crosshair;
         }
@@ -133,11 +147,21 @@
             </div> -->
             <div style="display: flex; flex-direction: row">
                 <div id="line-numbers" class="code med" style="padding: 5px;"></div>
-                <textarea
-                    id="calculator-input"
-                    class="input code med"
-                    style="padding: 5px; white-space: pre; min-height: 60px; flex: 1"
-                ></textarea>
+                <div class="flex-1 relative">
+                    <textarea
+                        id="calculator-input"
+                        class="input code med"
+                        style="padding: 5px; white-space: pre; min-height: 60px; flex: 1"
+                        spellcheck="false"
+                    ></textarea>
+                    <pre 
+                        id="calculator-input-pre"
+                        class="input-pre"
+                    >
+                        <code>
+                        </code>
+                    </pre>
+                </div>
             </div>
             <div id="stdout"></div>
             <div class="not-zen" style="margin-top: 50px; padding: 10px">
@@ -170,12 +194,15 @@
         // ---- evaluating the AST
         // This is before the parsing code, because the parser depends on some of the structures and stuff defined here.
 
+        const VT_ANY = debug ? "VT_ANY" : 0; // used only for type-based whatever, not a real value
+
         const VT_NUMBER = debug ? "VT_NUMBER" : 0;
         const VT_TENSOR = debug ? "VT_TENSOR" : 1;
         const VT_ERROR = debug ? "VT_ERROR" : 2;
         const VT_NULL = debug ? "VT_NULL" : 3;
         const VT_FUNCTION = debug ? "VT_FUNCTION" : 4;
         const VT_STRING = debug ? "VT_STRING" : 5;
+        const VT_LIST = debug ? "VT_LIST" : 6;
 
         const RT_PRINT = "print";
         const RT_GRAPH = "graph";
@@ -200,6 +227,7 @@
                 case VT_NULL: return "NULL";
                 case VT_FUNCTION: return "FUNCTION";
                 case VT_STRING: return "STRING";
+                case VT_LIST: return "LIST";
             }
             return "unknown type " + vt;
         }
@@ -222,10 +250,10 @@
         }
 
         const builtInConstantsMap = {
-            PI: makeNumber(Math.PI.toString()),
-            E: makeNumber(Math.E.toString()),
+            PI: makeNumber(Math.PI),
+            E: makeNumber(Math.E),
             // golden ratio
-            PHI: makeNumber("1.618033988749")
+            PHI: makeNumber(1.618033988749)
         };
         const builtInConstants = Object.keys(builtInConstantsMap);
 
@@ -255,7 +283,7 @@
                 return makeErr(
                     ctx,
                     `the variable ${name} hasn't been declared yet.
-    You can do something like ${name} := 2; to declare it. (the semicolon supresses output)`
+    You can do something like ${name} := 2; to declare it.`
                 );
             }
 
@@ -379,6 +407,12 @@
                 [VT_STRING]: {
                     "+": (ctx, a, b) => ({ vt: a.vt, val: a.val + b.val }),
                 }
+            },
+            [VT_LIST]: {
+                // these mutate directly
+                [VT_ANY]: {
+                    "+": (ctx, a, b) => { a.items.push(b); return a; },
+                }
             }
         };
 
@@ -389,9 +423,10 @@
             let binOp = null,
                 binOpL1 = null,
                 binOpL2 = null;
-            binOpL1 = binOpMatrix[t1];
+            binOpL1 = binOpMatrix[t1] || binOpMatrix[VT_ANY];
+
             if (binOpL1) {
-                binOpL2 = binOpL1[t2];
+                binOpL2 = binOpL1[t2] || binOpL1[VT_ANY];
                 if (binOpL2) {
                     binOp = binOpL2[op.text];
                 }
@@ -413,8 +448,16 @@
 
         function evaluateChain(ctx, x) {
             let val = evaluateExpression(ctx, x.terms[0]);
+            if (val.vt === VT_ERROR) {
+                return val;
+            }
+
             for (let i = 1; i < x.terms.length; i++) {
                 const val2 = evaluateExpression(ctx, x.terms[i]);
+                if (val2.vt === VT_ERROR) {
+                    return val;
+                }
+
                 val = applyOperator(ctx, val, val2, x.ops[i - 1]);
             }
             return val;
@@ -471,6 +514,10 @@
 
         function evaluateUnaryOp(ctx, x) {
             const val = evaluateExpression(ctx, x.expr);
+            if (val.vt === VT_ERROR) {
+                return val;
+            }
+
             const func = unaryOpsMap[val.vt][x.op.text];
             if (!func) {
                 return makeErr(ctx, `unary op ${x.op.text} can't be used on ${vtToString(val.vt)}`);
@@ -640,6 +687,36 @@
                     return tensor;
                 }
             },
+            toVec: {
+                args: [{ vt: VT_LIST }],
+                fn: (ctx, list) => {
+                    for(let i = 0; i < list.items.length; i++) {
+                        if (list.items[i].vt !== VT_NUMBER) {
+                            return makeErr(`all items in the list must be of type ` + vtToString(VT_NUMBER));
+                        }
+                    }
+
+                    let arr = Array(list.items.length);
+                    for(let i = 0; i < list.items.length; i++) {
+                        arr[i] = list.items[i].val;
+                    }
+
+                    return {
+                        vt: VT_TENSOR,
+                        data: arr,
+                        shape: [arr.length]
+                    };
+                }
+            },
+            len: {
+                args: [],
+                fn: (ctx, x) => {
+                    if (x.vt === VT_LIST) return makeNumber(x.items.length);
+                    if (x.vt === VT_TENSOR) return makeNumber(x.shape[0]);
+                    if (x.vt === VT_STRING) return makeNumber(x.val.length);
+                    return makeErr(ctx, `can't take the length of type ${vtToString(x.vt)}`);
+                }
+            },
 
             lerp: {
                 args: [{ vt: VT_NUMBER }],
@@ -683,6 +760,10 @@
                 fn: (ctx, ...args) => {
                     let functions = [];
                     let i = 0;
+                    if (args[i].vt === VT_LIST) {
+                        args = [...args[i].items, ...args.slice(1)];
+                    }
+
                     for(;i < args.length; i++) {
                         if (args[i].vt !== VT_FUNCTION) break;
                         if (args[i].args.length !== 1) return makeErr(ctx, `a function can only have 1 argument to be graphable, for now at least`);
@@ -693,7 +774,7 @@
                         return makeErr(ctx, `arguments to graph are like ...functions, domainStart, domainEnd`);
                     }
                     if (i !== args.length - 2) {
-                        return makeErr(ctx, `arguments to graph are like ...functions, domainStart, domainEnd`);
+                        return makeErr(ctx, `specify the start and end after the list of functions`);
                     }
 
                     ctx.results.push({
@@ -708,11 +789,6 @@
         };
         const builtinFunctions = Object.keys(builtinFunctionsMap);
 
-
-        function evaluateUserDefFunction(ctx, func) {
-            return evaluateBlock(ctx, func.body);;
-        }
-
         function evaluateUserDefFunctionCall(ctx, x, name) {
             const func = ctx.variables.get(name);
             if (!func) {
@@ -726,14 +802,23 @@
                 return makeErr(ctx, `user defined function ${name} wants ${func.args.length} arguments, only ${x.args.length} were provided`);
             }
 
-            ctx.variables.pushStackFrame();
-
             const argumentNames = func.args;
             const argumentValues = x.args;
 
+            ctx.variables.pushStackFrame();
+
             // set arguments to values
             for (let i = 0; i < argumentNames.length; i++) {
-                ctx.variables.set(ctx, argumentNames[i], evaluateExpression(ctx, argumentValues[i]), true);
+                const val = evaluateExpression(ctx, argumentValues[i]);
+                if (val.vt === VT_ERROR) {
+                    return val;
+                }
+                ctx.variables.set(ctx, argumentNames[i], val, ASSIGN_DECLARE);
+            }
+
+            // set captures to values
+            for (let i = 0; i < func.captures.length; i++) {
+                ctx.variables.set(ctx, func.captures[i][0], func.captures[i][1], ASSIGN_DECLARE);
             }
 
             const val = evaluateBlock(ctx, func.body);;
@@ -744,6 +829,19 @@
             return val;
         }
 
+        function evaluateExprArray(ctx, exprs) {
+            const argsEvaluated = Array(exprs.length)
+            for(let i = 0; i < exprs.length; i++) {
+                const val = evaluateExpression(ctx, exprs[i]);
+                if (val.vt === VT_ERROR) {
+                    return val;
+                }
+                argsEvaluated[i] = val;
+            }
+
+            return argsEvaluated;
+        }
+
         function evaluateFunctionCall(ctx, x) {
             const name = x.name.text;
             const func = builtinFunctionsMap[name];
@@ -752,7 +850,10 @@
                 return evaluateUserDefFunctionCall(ctx, x, name);
             }
 
-            const argsEvaluated = x.args.map((arg) => evaluateExpression(ctx, arg));
+            const argsEvaluated = evaluateExprArray(ctx, x.args);
+            if (argsEvaluated.vt === VT_ERROR) {
+                return argsEvaluated;
+            }
 
             // I don't care if the argument counts don't match at the moment.
             // some of the javascript math functions might accept variadic ...args,
@@ -761,6 +862,10 @@
 
             for (let i = 0; i < func.args.length; i++) {
                 if (argsEvaluated[i].vt !== func.args[i].vt) {
+                    if (argsEvaluated[i].vt === VT_ERROR) {
+                        return argsEvaluated[i];
+                    }
+
                     return makeErr(
                         ctx,
                         `Argument ${i} to function ${name} was of type ${vtToString(
@@ -790,14 +895,71 @@
                 body: [x.rhs]
             };
 
+            // our function may also be referencing variables outside of itself. 
+            // in that case, we need to capture their values as they are now, and then use them when we call
+            // the function again later with the given arguments. 
+            // I believe this will make the most sense in the most cases. Except when they point to references, which may or may not
+            // be in scope. hmm. certainly modifying a value would be questionable. it would affect how the other functions are called,
+            // because they may also be referencing the same thing.
+            // I wonder if this can be used to interesting effect though
+
+            // array of pairs like [[name, val], ...]
+            const captures = [];
+
+            const dfs = (node) => {
+                if (typeof node === "string" || node === null || node === undefined) {
+                    return;
+                }
+                if (typeof node !== "object") {
+                    return;
+                }
+
+                if (node.t === T_IDENT) {
+                    if (argNames.includes(node.text)) return;
+
+                    if (!captures.find(x => x[0] === node.text)) {
+                        const val = evaluateVariable(ctx, node, false);
+                        if (val === null) {
+                            // ignore errors, they are usually from identifiers not being defined
+                            return;
+                        }
+
+                        // push a copy
+                        if (val.vt === VT_TENSOR) {
+                            captures.push([node.text, copyTensor(val)]);
+                        } else if (val.vt === VT_NUMBER) {
+                            captures.push([node.text, makeNumber(val.val)]);
+                        } else {
+                            // push a reference (!!!)
+                            captures.push([node.text, val]);
+                        }
+                    }
+                    return;
+                }
+
+                for (const k of Object.keys(node)) {
+                    if (node.t === T_ASSIGNMENT && k === "lhs") {
+                        // skip all variable assignments. we don't want to treat y in f(x) { y := 2 } as a capture
+                        continue;
+                    }
+
+                    dfs(node[k]);
+                }
+            };
+
+            dfs(x.rhs);
+
             const func = {
                 vt: VT_FUNCTION,
                 args: argNames,
+                captures: captures,
+                randomNumber: Math.random(),
                 body: body,
                 text: nodeText(ctx, x),
                 name: varName,
             };
-            ctx.variables.set(ctx, varName, func, x.isDeclaration);
+
+            ctx.variables.set(ctx, varName, func, x.assignType);
 
             return func;
         }
@@ -833,24 +995,32 @@
             }
 
             const rhs = evaluateExpression(ctx, x.rhs);
+            if (rhs.vt === VT_ERROR) {
+                return rhs;
+            }
             const existingVar = getVariable(ctx, varName, false);
 
             if (isIndexation) {
-                if (x.isDeclaration) {
+                if (x.assignType === ASSIGN_DECLARE) {
                     return makeErr(ctx, `${ctx.text.substring(x.start, x.end)} - can't declare a new variable inside a thing, doesn't make sense conceptually (hint: just use '=')`);
                 }
             }
-            // isDeclaration will always be false when isIndexation is true from here on
+            // assignType will always be not be ASSIGN_DECLARE when isIndexation is true from here on
 
             if (isIndexation) {
-                if (x.isDeclaration) {
+                if (x.assignType === ASSIGN_DECLARE) {
                     return makeErr(ctx, `can't declare a new variable inside a tensor, doesn't make sense conceptually (hint: just use '=')`);
                 }
 
                 // we are going to set the values directly in the tensor
                 const tensor = existingVar;
 
-                const [flattenedIndices, remainingShape, err] = evaluateIndicesToFlatArray(ctx, x, tensor.shape, x.lhs.indexes.map(x => evaluateExpression(ctx, x)));
+                const indexes = evaluateExprArray(ctx, x.lhs.indexes);
+                if (indexes.vt === VT_ERROR) {
+                    return indexes;
+                }
+
+                const [flattenedIndices, remainingShape, err] = evaluateIndicesToFlatArray(ctx, x, tensor.shape, indexes);
                 if (err !== null) {
                     return err;
                 }
@@ -893,7 +1063,7 @@
             };
 
 
-            let setError = ctx.variables.set(ctx, varName, rhs, x.isDeclaration);
+            let setError = ctx.variables.set(ctx, varName, rhs, x.assignType);
             if (setError !== null) {
                 return setError;
             }
@@ -907,6 +1077,10 @@
 
         function evaluateTernary(ctx, x) {
             const condition = evaluateExpression(ctx, x.conditional);
+            if (condition.vt === VT_ERROR) {
+                return condition.vt;
+            }
+
             if (condition.vt !== VT_NUMBER) {
                 return makeErr(
                     ctx,
@@ -933,13 +1107,17 @@
         }
 
         function nodeText(ctx, node) {
-            return `${ctx.text.substring(node.start, node.end)}`;
+            return ctx.text.substring(node.start, node.end).trim();
         }
 
         function evaluateTensor(ctx, x) {
             const depthFirstEvalTensor = (x) => {
                 if (x.t !== T_TENSOR) {
-                    let val = evaluateExpression(ctx, x);
+                    const val = evaluateExpression(ctx, x);
+                    if (val.vt === VT_ERROR) {
+                        return val;
+                    }
+
                     if (val.vt === VT_NUMBER || val.vt === VT_TENSOR) {
                         return val;
                     }
@@ -1083,10 +1261,27 @@
 
         function evaluateIndexation(ctx, x) {
             const expr = evaluateExpression(ctx, x.expr);
-            if (expr.vt !== VT_TENSOR) {
+            if (expr.vt === VT_ERROR) {
+                return expr;
+            }
+
+            if (expr.vt !== VT_TENSOR && expr.vt !== VT_LIST) {
                 return makeErr(ctx, `the type ${vtToString(expr.vt)} cannot be indexed yet`);
             }
-            const indexes = x.indexes.map((x) => evaluateExpression(ctx, x));
+
+            const indexes = evaluateExprArray(ctx, x.indexes);
+            if (indexes.vt === VT_ERROR) {
+                return indexes;
+            }
+
+            if (expr.vt === VT_LIST) {
+                if (indexes.length === 1) {
+                    return expr.items[Math.floor(indexes[0].val)];
+                } else {
+                    // TODO: extract indexing logic to custom function, call it here
+                    return makeErr(ctx, `can't index thing inside a thing yet :(`);
+                }
+            }
 
             const [flatIndices, remainingShape, err] = evaluateIndicesToFlatArray(ctx, x, expr.shape, indexes);
             if (err !== null) {
@@ -1137,6 +1332,9 @@
             // evaluate function
             for(let i = 0; i < x.body.length; i++) {
                 lastStatementResult = evaluateExpression(ctx, x.body[i]);
+                if (lastStatementResult.vt === VT_ERROR) {
+                    return lastStatementResult;
+                }
             }
 
             return lastStatementResult;
@@ -1147,23 +1345,41 @@
 
             // initialize loop
             for(let i = 0; i < x.initializers.length; i++) {
-                evaluateExpression(ctx, x.initializers[i]);
+                const val = evaluateExpression(ctx, x.initializers[i]);
+                if (val.vt === VT_ERROR) {
+                    return val;
+                }
             }
 
             let maxLoopCount = 1000000, safetyCounter = 0;
 
             // drive loop
-            for(;
-                safetyCounter < maxLoopCount && isTrue(evaluateExpression(ctx, x.loopCondition));
+            for(;safetyCounter < maxLoopCount;
                 safetyCounter++ // make sure we can't get any infinite loops even if we want to. I don't know how to allow users to break them yet
             ) {
+                // evaluate loop condition
+                const val = evaluateExpression(ctx, x.loopCondition);
+                if (val.vt === VT_ERROR) {
+                    return val;
+                }
+
+                if (!isTrue(val)) {
+                    break;
+                }
+
+                ctx.variables.pushStackFrame();
 
                 // loop body
                 evaluateBlock(ctx, x.loopBody, false);
 
+                ctx.variables.popStackFrame();
+
                 // increment
                 for(let i = 0; i < x.iterators.length; i++) {
-                    evaluateExpression(ctx, x.iterators[i]);
+                    const val = evaluateExpression(ctx, x.iterators[i]);
+                    if (val.vt === VT_ERROR) {
+                        return val;
+                    }
                 }
             }
 
@@ -1178,6 +1394,18 @@
 
         function evaluateString(x) {
             return makeString(x.text);
+        }
+
+        function evaluateList(ctx, x) {
+            const exprs = evaluateExprArray(ctx, x.items);
+            if(exprs.vt === VT_ERROR) {
+                return exprs;
+            }
+
+            return {
+                vt: VT_LIST,
+                items: exprs
+            };
         }
 
         function evaluateExpression(ctx, x) {
@@ -1230,6 +1458,9 @@
                 case T_FOR_LOOP:
                     value = evaluateForLoop(ctx, x);
                     break;
+                case T_LIST:
+                    value = evaluateList(ctx, x);
+                    break;
                 default:
                     value = makeErr(ctx, "Unknown ast node type: " + type);
                     break;
@@ -1280,16 +1511,24 @@
 
                 return null;
             }
-            set(ctx, key, value, isDeclaration) {
+            set(ctx, key, value, assignType) {
                 // if declaration, create variable in local scope
-                if (isDeclaration) {
+                if (assignType === ASSIGN_DECLARE) {
                     const currentScope = this.scopes[this.currentScope];
                     if (currentScope.has(key)) 
                         return makeErr(ctx, `variable ${key} already defined, with value: ${valueToString(currentScope.get(key))}`);
                         
                     currentScope.set(key, value);
                     return null;
-                } 
+                }
+
+                if (assignType === ASSIGN_INCREMENT) {
+                    const existing = this.get(key);
+                    value = applyOperator(ctx, existing, value, { text: "+" });
+                } else if (assignType === ASSIGN_DECREMENT) {
+                    const existing = this.get(key);
+                    value = applyOperator(ctx, existing, value, { text: "-" });
+                }
                 
                 // set variable in whatever scope it is in
                 for (let i = this.currentScope; i >= 0; i--) {
@@ -1313,7 +1552,8 @@
             };
 
             if (program.parseError) {
-                makeErr(ctx, program.parseError);
+                ctx.programResult = makeErr(ctx, program.parseError);
+                return ctx;
             }
             
             for(let i = 0; i < program.expressions.length; i++) {
@@ -1377,7 +1617,9 @@
                 case VT_STRING:
                     return v.val;//"\"" + v.val.toString().replace(/"/g, "\\\"") + "\"";
                 case VT_FUNCTION:
-                    return v.text;
+                    return v.text + (v.captures.length === 0 ? "" : " where " + v.captures.map(x => x[0] + "=" + valueToString(x[1])).join(", "));
+                case VT_LIST:
+                    return "<" + v.items.map(i => valueToString(i)).join(",\n") + ">";
                 default:
                     return `${v.val}`;
             }
@@ -1411,6 +1653,7 @@
         const T_STRING = debug ? "T_STRING" : 16;
         const T_OP_COMPARISON = debug ? "T_OP_COMPARISON" : 17;
         const T_COMPARISON = debug ? "T_COMPARISON" : 18;
+        const T_LIST = debug ? "T_LIST" : 19;
 
         const reservedKeywords = [
             "for"
@@ -1455,7 +1698,7 @@
         }
 
         function isLetter(c) {
-            return c.toUpperCase() != c.toLowerCase() || c.codePointAt(0) > 127;
+            return c.toUpperCase() != c.toLowerCase() || c.codePointAt(0) > 127 || c === "_";
         }
 
         // this code also parses comments.
@@ -1703,8 +1946,8 @@
             return true;
         }
 
-        // wrongly assumes there will always be at least one element in this list
-        // also, hasTerminator only works when the terminator is length=1. we need to write it properly next time, or later
+        // this function does not know the size of the terminator, so it will stop on the terminator.
+        // this is unlike all other parsing functions, that stop one after the final character
         function parseDelimitedList(text, ctx, lines, exprParser, hasDelimiter, hasTerminator, mustTerminate=true) {
             const start = advanceWhileWhitespace(text, ctx.pos);
             if (start >= text.length) {
@@ -1889,6 +2132,35 @@
             return true;
         }
 
+        function parseList(text, ctx, lines) {
+            const start = advanceWhileWhitespace(text, ctx.pos);
+            if (start >= text.length) {
+                return false;
+            }
+
+            const items = [];
+
+            if (text[ctx.pos] !== "<") return false;
+            ctx.pos += 1;
+
+            if (!parseDelimitedList(
+                text, ctx, items, parseExpressionTopLevel,
+                (t, pos) => hasText(t, pos, ","),
+                (t, pos) => hasText(t, pos, ">"),
+            )) {
+                return false;
+            }
+            ctx.pos += 1;
+
+            lines.push({
+                t: T_LIST,
+                start: start,
+                end: ctx.pos,
+                items: items,
+            });
+            return true;
+        }
+
         function parseString(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
             if (start >= text.length) {
@@ -1955,6 +2227,9 @@
 
             ctx.pos = start;
             if (parseString(text, ctx, lines)) return true;
+
+            ctx.pos = start;
+            if (parseList(text, ctx, lines)) return true;
 
             return false;
         }
@@ -2057,7 +2332,7 @@
             if (!hasText(text, ctx.pos, ";")) return false;
             ctx.pos = advanceWhileWhitespace(text, ctx.pos+1);
 
-            // parse loop iterators
+            // parse loop iterators (this will stop exactly on the brace and not go past it)
             if (!parseDelimitedList(
                 text, ctx, iterators, parseAssignment, 
                 (t, pos) => hasText(t, pos, ","),
@@ -2153,6 +2428,13 @@
             return true;
         }
 
+        // my compiler architecture prevents me from implementing += and -= properly at the moment, so 
+        // I will hardcode them since they are so useful
+        const ASSIGN_SET = "set";
+        const ASSIGN_DECLARE = "declare";
+        const ASSIGN_INCREMENT = "increment";
+        const ASSIGN_DECREMENT = "decrement";
+
         function parseAssignment(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
             if (start >= text.length) {
@@ -2165,12 +2447,18 @@
 
             const assignOpPos = advanceWhileWhitespace(text, ctx.pos);
 
-            let isDeclaration = false;
+            let type = ASSIGN_SET;
             if (hasText(text, assignOpPos, "=")) {
                 ctx.pos = assignOpPos + 1;
             } else if (hasText(text, assignOpPos, ":=")) {
                 ctx.pos = assignOpPos + 2;
-                isDeclaration = true;
+                type = ASSIGN_DECLARE;
+            } else if (hasText(text, assignOpPos, "-=")) {
+                ctx.pos = assignOpPos + 2;
+                type = ASSIGN_DECREMENT;
+            } else if (hasText(text, assignOpPos, "+=")) {
+                ctx.pos = assignOpPos + 2;
+                type = ASSIGN_INCREMENT;
             } else {
                 // it isn't an assignment. we are just unwrapping
                 lines.push(lhs[0]);
@@ -2187,7 +2475,7 @@
                 end: ctx.pos,
                 lhs: lhs[0],
                 rhs: rhs[0],
-                isDeclaration: isDeclaration
+                assignType: type
             });
             return true;
         }
@@ -2319,8 +2607,10 @@
                 ...Array(input.value.split("\n").length).keys()
             ].join("\n");
 
-            // debug outputs
 
+            // may need debouncing in the future
+
+            // debug outputs
             if (showAstCheckbox.checked) {
                 showAstOutput.removeAttribute("hidden");
             } else {
@@ -2346,10 +2636,12 @@
 
         const hackySanitizationDiv = document.createElement("DIV");
         function sanitizeHTML(html) {
-            hackySanitizationDiv.innerText = html;
-            let val = hackySanitizationDiv.innerHTML;
-            hackySanitizationDiv.innerText = "";
-            return val;
+            return html
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
         }
 
         function renderOutputs(programCtx) {
@@ -2360,7 +2652,7 @@
             function wrapInTitle(title, innerHtml) {
                 return (
                     `<div class="flex-row">` + 
-                        (title ? `<p class="p-5 m-0"><b>${title}: </b></p>` : "") + 
+                        (title ? `<p class="p-5 m-0 label"><b>${title}: </b></p>` : "") + 
                         innerHtml +
                     "</div>"
                 );
@@ -2385,8 +2677,6 @@
                 const domainStart = result.start.val;
                 const domainEnd = result.end.val;
 
-                const colors = []
-                
                 const paths = [], texts = [];
 
                 const padding = 50;
@@ -2398,20 +2688,33 @@
                 
 
                 // find graph bounds by evaluating functions
-                let min = 0, max = 0;
-                for(const fIndex in result.functions) {
+                let min = -20, max = -20;
+                for(let fIndex = 0; fIndex < result.functions.length; fIndex++) {
                     const func = result.functions[fIndex];
-
-
                     programCtx.variables.pushStackFrame();
+                    // set captures to values
+                    for (let i = 0; i < func.captures.length; i++) {
+                        programCtx.variables.set(programCtx, func.captures[i][0], func.captures[i][1], ASSIGN_DECLARE);
+                    }
+
                     const fRef = makeNumber(0);
-                    programCtx.variables.set(programCtx, func.args[0], fRef, true);
+                    programCtx.variables.set(programCtx, func.args[0], fRef, ASSIGN_DECLARE);
 
                     for(let i = 0; i < n; i++) {
                         const tX = (i / (n - 1));
 
                         fRef.val = lerp(domainStart, domainEnd, tX);
-                        const num = evaluateUserDefFunction(programCtx, func);
+                        
+                        programCtx.variables.pushStackFrame();
+
+                        const num = evaluateBlock(programCtx, func.body);
+
+                        programCtx.variables.popStackFrame();
+
+                        if (num.vt === VT_ERROR) {
+                            print(stdout, { title: "An error occurred while graphing", val: num }, 0);
+                            return;
+                        }
                         const domainY = num.val;
                         
                         points[i + fIndex*n] = domainY;
@@ -2449,7 +2752,6 @@
                     { t: `${domainEnd.toFixed(2)}`, x: w - axesOverhang, y: h, a: "end" },
                 );
 
-
                 // draw graph
                 for(const fIndex in result.functions) {
                     const func = result.functions[fIndex];
@@ -2466,7 +2768,7 @@
                         }
                     }
 
-                    paths.push({ p: path.join(" ") , s: 'black', w: 1 });
+                    paths.push({ p: path.join(" ") , s: `hsl(${360 * fIndex / result.functions.length}, 100%, 50%)`, w: 2 });
                 }
 
                 stdout.innerHTML += wrapInTitle(
@@ -2498,7 +2800,7 @@
                         const tX = event.pageX - rect.left;
                         const tY = event.pageY - rect.top - scrollAmnt;
 
-                        const domainX = lerp(domainStart, domainEnd, tX / w).toFixed(3);
+                        const domainX = lerp(domainStart, domainEnd, tX / (w - leftPad)).toFixed(3);
                         const domainY = lerp(max, min, tY / (h - bottomPad - topPad)).toFixed(3);
 
                         const viewX = event.pageX - rect2.left - 5;
@@ -2552,21 +2854,69 @@
 
         const testcases = [
             {
+                name: "scope capturing",
+                input: `
+                funcs := <>;
+for i := 0; i < 3; i+=1 {
+	f(x) := sin(i*x)
+	funcs += f;
+}
+
+g(x) := {
+    // sometimes this sum variable can be mis-interpreted as a capture, in which case this won't work.
+    // or we forget to push and pop a stack frame each time we evaluate this function in the graphing method, and
+    // it thinks that sum is already declared
+	sum := 0;
+	for i := 0; i < len(funcs); i+= 1 {
+		f := funcs[2];
+		sum += f(x);
+	}
+
+	sum
+}
+
+// this must work
+graph(g, 0, 1)
+`,
+                expected: "{}",
+                isVisualTest: true
+            },
+            {
                 name: "XSS attack",
                 input: `"<p onclick='alert(\\"efaf\\")'>dasdas</p>"`,
                 expected: `<p onclick='alert("efaf")'>dasdas</p>`,
             },
             {
-                name: "typical math expression",
-                input: "1 + 2 * 3 + 4^(sin(PI/2)*2)",
-                expected: "23",
+                name: "typical math usecases",
+                input: `
+// most path expressions should be supported by this calculator
+print(1 + 2 * 3 + 4^(sin(PI/2)*2), "first")
+
+// do keep in mind that they are floating point numbers and not real numbers though
+print(0.1+0.2, "0.1+0.2 (cries in floating point)")
+`,
+                expected: "{}",
                 alwaysShow: true,
+                isVisualTest: true
+            },
+            {
+                name: "typical math expression",
+                input: `1 + 2 * 3 + 4^(sin(PI/2)*2)`,
+                expected: "23",
             },
             {
                 name: "logical comparisons",
-                input: "((1 + 2 + 3 >= 1 + 2 + 3) == (1 + 2 + 3 > 1 + 2 + 3)) == 0",
-                expected: "1",
-                alwaysShow: true
+                input: `
+// comparison operators will return 0 for false and 1 for true.
+print(19 > 20, "comparison")
+
+// Any number greater than 0.5 is considered true, and any number less than or equal to 0.5 is considered false
+boolean(x) := x ? 1 : 0;
+graph(boolean, 0, 1);
+`,
+                expected: "{}",
+                alwaysShow: true,
+                isVisualTest: true
             },
             {
                 name: "graphing",
@@ -2577,7 +2927,22 @@ graph(
 	f(x) := sin(8 * x), 
 	g(x) := cos(x), 
 	0, 2*PI
-)`,
+)
+
+// most of the javascript Math.whatever functions should be supported.
+// although do keep in mind that some functions are not deterministic.
+// the following function is different each time it is graphed
+i := 0
+random_boi(x) := { i += 0.1 * random(x)^6; i }
+graph(
+	random_boi,
+	random_boi, 
+	0, 10
+)
+
+// to add to the mystery, i is still zero: 
+print(i)
+`,
                 expected: "{}",
                 alwaysShow: true,
                 isVisualTest: true
@@ -2591,7 +2956,6 @@ v := [1,2,3,4]
 
 A ** v`,
                 expected: "shape: 1x4, data: [[1,  2,  3,  4]]",
-                alwaysShow: true
             },
             {
                 name: "matrix transpose",
@@ -2603,12 +2967,10 @@ A:= [[1,  2,  3],
 `,
 
                 expected: `shape: 3x3, data: 	[[1,  1,  2], 	 [2,  2,  4], 	 [3,  3,  6]]`,
-                alwaysShow: true,
             },
             {
                 name: "programming constructs - variable assignment",
                 input: `
-// anything after // on a line is ignored.
 // the := operator makes a new variable:
 x := 1
 
@@ -2637,7 +2999,7 @@ x := 2 * {
     for i := 0; i < 10; i = i+1 {
         y = y + i
     }
-    y
+    y   // this here would be the last line of the block
 };
 
 x
@@ -2739,7 +3101,7 @@ x = y * x + x`,
             {
                 name: "Function wrong input type error",
                 input: "sin(x)",
-                expected: "Argument 0 to function sin was of type ERROR, but it wants NUMBER "
+                expected: "the variable x hasn't been declared yet. You can do something like x := 2; to declare it."
             },
             {
                 name: "line comments",
@@ -2817,7 +3179,7 @@ x = y * x + x`,
                         <tr>
                             <td class="testcase-button" data-testcase-id="${i}">
                                 <h4>${sanitizeHTML(testcase.name)}</h4>
-                                <p>
+                                <p class="code" title="click to put this code into the calculator">
                                     ${sanitizeHTML(testcase.input)}
                                 </p>
                             </td>
@@ -2860,11 +3222,17 @@ x = y * x + x`,
         }
 
         // ---- set value
-        input.value = `
-arr := [1,2,3,4,5,3,2,3,4,3,2,2,33,4];
-s(x) := arr[floor(x)]
+        input.value = `1 + 1`;
 
-s(5)`;
+`
+funcs := <>;
+for i := 0; i < 3; i+=1 {
+	f(x) := sin(i*x)
+	funcs += f;
+}
+
+graph(funcs, 0, 3)
+`;
         rerender();
         rerenderTests();
 
