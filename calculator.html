@@ -8,10 +8,6 @@
     </head>
     <!-- // ---- styles -->
     <style>
-        .relative {
-            position: relative;
-        }
-
         .flex-row {
             display: flex;
             flex-direction: row;
@@ -113,12 +109,6 @@
             color: #ffffff;
         }
 
-        .input-pre, .input {
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-
         .graph-rect {
             cursor: crosshair;
         }
@@ -147,21 +137,12 @@
             </div> -->
             <div style="display: flex; flex-direction: row">
                 <div id="line-numbers" class="code med" style="padding: 5px;"></div>
-                <div class="flex-1 relative">
-                    <textarea
-                        id="calculator-input"
-                        class="input code med"
-                        style="padding: 5px; white-space: pre; min-height: 60px; flex: 1"
-                        spellcheck="false"
-                    ></textarea>
-                    <pre 
-                        id="calculator-input-pre"
-                        class="input-pre"
-                    >
-                        <code>
-                        </code>
-                    </pre>
-                </div>
+                <textarea
+                    id="calculator-input"
+                    class="input code med"
+                    style="padding: 5px; white-space: pre; min-height: 60px; flex: 1"
+                    spellcheck="false"
+                ></textarea>
             </div>
             <div id="stdout"></div>
             <div class="not-zen" style="margin-top: 50px; padding: 10px">
