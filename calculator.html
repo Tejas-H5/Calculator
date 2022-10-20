@@ -8,6 +8,10 @@
     </head>
     <!-- // ---- styles -->
     <style>
+        body {
+            font-family: 'Source Code Pro', monospace;
+        }
+
         .flex-row {
             display: flex;
             flex-direction: row;
@@ -57,6 +61,8 @@
             background: #000000;
             outline: none;
             border-right: 1px solid #aaaaaa;
+            padding: 5px;
+            min-height: 60px;
         }
 
         .code {
@@ -105,15 +111,46 @@
 
         .input {
             padding-left: 5px;
+            font-family: 'Source Code Pro', monospace;
             background: #000000;
             color: #ffffff;
+            white-space: pre;
+            min-height: 60px;
+            tab-size: 4;
+            line-height: 1.4rem;
+        }
+
+        .input.editing {
+            z-index: 1;
+            color: transparent;
+            background: transparent;
+            caret-color: white;
+        }
+
+        .input.highlighting {
+            z-index: 0;
+            
+        }
+
+        /* Very clever approach to syntax highlighting that I copied:
+             https://css-tricks.com/creating-an-editable-textarea-that-supports-syntax-highlighted-code/ */
+        .input.editing,
+        .input.highlighting {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: calc(100% - 5px);
+            padding: 0;
+            padding-left: 5px;
+            padding-top: 5px;
+            border: 0;
         }
 
         .graph-rect {
             cursor: crosshair;
         }
     </style>
-    <body style="font-family: 'Source Code Pro', monospace; margin: 0px">
+    <body style="margin: 0px;">
         <div style="padding: 10px" class="not-zen">
             <h2>Calculator</h2>
 
@@ -136,13 +173,15 @@
                 <div id="calculator-input" contenteditable="plaintext-only" style="padding: 5px; white-space: pre; min-height: 60px; flex: 1;"></div>
             </div> -->
             <div style="display: flex; flex-direction: row">
-                <div id="line-numbers" class="code med" style="padding: 5px;"></div>
-                <textarea
-                    id="calculator-input"
-                    class="input code med"
-                    style="padding: 5px; white-space: pre; min-height: 60px; flex: 1"
-                    spellcheck="false"
-                ></textarea>
+                <div id="line-numbers" class="code med"></div>
+                <div style="flex: 1; position:relative;">
+                    <textarea
+                        id="calculator-input"
+                        class="input editing code med"
+                        spellcheck="false"
+                    ></textarea>
+                    <div class="input highlighting code med" id="calculator-input-syntax-highlighted"></div>
+                </div>
             </div>
             <div id="stdout"></div>
             <div class="not-zen" style="margin-top: 50px; padding: 10px">
@@ -421,7 +460,7 @@
                 return makeErr(
                     ctx,
                     `the operation ${vtToString(t1)} ${op.text} ${vtToString(t2)} doesn't exist yet` 
-                        + ((t1 === VT_TENSOR && t2 === VT_NUMBER) || (t2 === VT_TENSOR && t1 === VT_NUMBER) ? " (hint: put [] around the number)" : "")
+                        + ((t1 === VT_TENSOR && t2 === VT_NUMBER) || (t2 === VT_TENSOR && t1 === VT_NUMBER) ? " (hint: for now you have to put [] around the number)" : "")
                 );
             }
 
@@ -429,18 +468,18 @@
         }
 
         function evaluateChain(ctx, x) {
-            let val = evaluateExpression(ctx, x.terms[0]);
+            let val = evaluateExpression(ctx, x.termsAndOps[0]);
             if (val.vt === VT_ERROR) {
                 return val;
             }
 
-            for (let i = 1; i < x.terms.length; i++) {
-                const val2 = evaluateExpression(ctx, x.terms[i]);
+            for (let i = 2; i < x.termsAndOps.length; i+=2) {
+                const val2 = evaluateExpression(ctx, x.termsAndOps[i]);
                 if (val2.vt === VT_ERROR) {
                     return val;
                 }
 
-                val = applyOperator(ctx, val, val2, x.ops[i - 1]);
+                val = applyOperator(ctx, val, val2, x.termsAndOps[i - 1]);
             }
             return val;
         }
@@ -906,15 +945,15 @@
                             return;
                         }
 
-                        // push a copy
-                        if (val.vt === VT_TENSOR) {
-                            captures.push([node.text, copyTensor(val)]);
-                        } else if (val.vt === VT_NUMBER) {
-                            captures.push([node.text, makeNumber(val.val)]);
-                        } else {
+                        // // push a copy
+                        // if (val.vt === VT_TENSOR) {
+                        //     captures.push([node.text, copyTensor(val)]);
+                        // } else if (val.vt === VT_NUMBER) {
+                        //     captures.push([node.text, makeNumber(val.val)]);
+                        // } else {
                             // push a reference (!!!)
                             captures.push([node.text, val]);
-                        }
+                        //}
                     }
                     return;
                 }
@@ -1093,6 +1132,10 @@
         }
 
         function evaluateTensor(ctx, x) {
+            if (x.rows.length === 0) {
+                return makeErr(ctx, `can't have a zero-length vector`);
+            }
+
             const depthFirstEvalTensor = (x) => {
                 if (x.t !== T_TENSOR) {
                     const val = evaluateExpression(ctx, x);
@@ -1800,37 +1843,35 @@
                 return false;
             }
 
-            const terms = [];
-            const ops = [];
+            const termsAndOps = [];
 
-            if (!termParser(text, ctx, terms)) {
+            if (!termParser(text, ctx, termsAndOps)) {
                 return false;
             }
 
-            while (opParser(text, ctx, ops)) {
-                if (!termParser(text, ctx, terms)) {
+            while (opParser(text, ctx, termsAndOps)) {
+                if (!termParser(text, ctx, termsAndOps)) {
                     // remove the last operator we parsed, we shouldn't have
-                    const op = ops.pop();
+                    const op = termsAndOps.pop();
 
                     // reset end
-                    ctx.pos = terms[terms.length - 1].end;
+                    ctx.pos = termsAndOps[termsAndOps.length - 1].end;
                     break;
                 }
             }
 
-            if (terms.length === 1) {
+            if (termsAndOps.length === 1) {
                 // unwraps a single term to be it's own thing.
                 // the AST becomes unmanageably large if we don't unwrap nodes like this.
                 // although performance might be better, it is mainly a debugging optimization
-                lines.push(terms[0]);
+                lines.push(termsAndOps[0]);
             } else {
                 lines.push({
                     t: type,
                     start: start,
                     end: ctx.pos,
                     text: text.substring(start, ctx.pos),
-                    terms: terms,
-                    ops: ops,
+                    termsAndOps: termsAndOps,
                     show: false,
                     lineNumber: 0
                 });
@@ -2554,6 +2595,7 @@
         const showResultOutput = document.getElementById("result-output");
         const testcaseContainer = document.getElementById("testcases");
         const stdout = document.getElementById("stdout");
+        const syntaxHighlightedView = document.getElementById("calculator-input-syntax-highlighted");
 
         // HTML doesn't like tabs, we need this additional code to be able to insert tabs.
         input.addEventListener("keydown", (e) => {
@@ -2561,17 +2603,122 @@
 
             e.preventDefault();
 
-            var start = input.selectionStart;
-            var end = input.selectionEnd;
-
-            // set textarea value to: text before caret + tab + text after caret
-            input.value = input.value.substring(0, start) + "\t" + input.value.substring(end);
-
-            // put caret at right position again
-            input.selectionStart = input.selectionEnd = start + 1;
+            // inserting a tab like this should preserve undo
+            document.execCommand("insertText", false, '\t');
 
             onInputChange();
         });
+
+
+        function getSyntaxHighlightStyle(t) {
+            switch(t) {
+                case "comment": return "color:#AAAAAA;";
+                case T_NUMBER: return "color:#3ABEFF;";
+                case T_STRING: return "color:#FF7F00;";
+                case T_OP_COMPARISON:
+                case T_OP_EXPONENT:
+                case T_OP_EXPR:
+                case T_OP_TERM:
+                    return "color:#FFFFFF;";
+                case T_IDENT: return "color:#FFE03B;font-style:italic;";
+                case T_FOR_LOOP: return "color:#FF00FF;";
+                default: return "color:#FFFFFF;";
+            }
+        }
+        
+        function getKeysInSyntaxOrder(t) {
+            switch (t) {
+                case T_BLOCK: return ["body"];
+                case T_EXPR_INDEXATION: return ["expr", "indices"];
+                case T_EXPR:
+                case T_TERM:
+                case T_COMPARISON: return ["termsAndOps"];
+                case T_UNARY_OP: return ["op", "expr"]
+                case T_FUNCTION_CALL: return ["name", "args"];
+                case T_ASSIGNMENT: return ["lhs", "rhs"];
+                case T_TERNARY: return ["conditional", "ifTrue", "else"];
+                case T_TENSOR: return ["rows"];
+                case T_FOR_LOOP: return ["initializers", "loopCondition", "iterators", "loopBody" ];
+                case T_LIST: return ["items"];
+            }
+
+            return null;
+        }
+
+
+        const commentStyle = getSyntaxHighlightStyle("comment");
+
+        function highlightSyntax(text, ast) {
+            // perform syntax highlighting ourselves, since no JS library supports our language at the moment
+            let strings = [];
+            let pos = 0;
+
+            // I cant believe this works
+            const dfs = (node) => {
+
+                const keys = getKeysInSyntaxOrder(node.t);
+                if (keys === null) {
+                    while (pos < node.start) {
+                        let startPos = pos;
+                        // we wrap whitespace in the comment style. this is because comments are treated as whitespace
+                        pos = advanceWhileWhitespace(text, pos)
+                        if (startPos !== pos) {
+                            strings.push(`<span style="${commentStyle}">`);
+                            strings.push(sanitizeHTML(text.substring(startPos, pos)));
+                            strings.push("</span>")
+                        }
+
+                        // there are also non-whitespace characters that need to have the style of the parent element, so
+                        // we simply don't wrap it in anything
+                        startPos = pos;
+                        while (pos < node.start && !isWhitespace(text[pos])) {
+                            pos += 1;
+                        }
+                        if (startPos !== pos) {
+                            strings.push(text.substring(startPos, pos));
+                        }
+                    }
+
+                    // now we warp the node itself in it's respective style
+                    const style = getSyntaxHighlightStyle(node.t);
+                    strings.push(`<span style="${style}">`)
+                    strings.push(sanitizeHTML(text.substring(pos, node.end)));
+                    pos = node.end;
+                    strings.push(`</span>`);
+
+                    if (node.start < pos) {
+                        return "bruh";
+                    }
+                } else {
+                    for(const key of keys) {
+                        const subNode = node[key];
+                        if (!subNode) {
+                            return;
+                        }
+    
+                        if (typeof subNode.length === "number") {
+                            // it is most likely an array. (in our case 100%, actually)
+                            for(const subNodeItem of subNode) {
+                                dfs(subNodeItem, pos);
+                            }
+                        } else {
+                            dfs(subNode);
+                        }
+                    }
+                }
+                
+            }
+
+            for(let i = 0; i < ast.expressions.length; i++) {
+                dfs(ast.expressions[i], pos);
+            }
+
+            // if we couldn't AST the file all the way to the end, we should still be displaying all the text
+            strings.push(sanitizeHTML(text.substring(pos)));
+
+            syntaxHighlightedView.innerHTML = strings.join("");
+            console.log(strings.join(""));
+        }
 
         const onInputChange = () => {
             rerender();
@@ -2614,9 +2761,10 @@
             showAstOutput.innerText = JSON.stringify(debugFormatAST(ast, text), null, 4);
             showResultOutput.innerText = JSON.stringify(result, null, 4);
             renderOutputs(result)
+
+            highlightSyntax(text, ast);
         }
 
-        const hackySanitizationDiv = document.createElement("DIV");
         function sanitizeHTML(html) {
             return html
                 .replace(/&/g, "&amp;")
@@ -2922,7 +3070,7 @@ graph(
 	0, 10
 )
 
-// to add to the mystery, i is still zero: 
+// the graphing only happens after all code is ran. So even though running random_boi is supposed to mutate i, i is still zero
 print(i)
 `,
                 expected: "{}",
@@ -2953,7 +3101,7 @@ A:= [[1,  2,  3],
             {
                 name: "programming constructs - variable assignment",
                 input: `
-// the := operator makes a new variable:
+                // the := operator makes a new variable:
 x := 1
 
 // the = operator assigns to an existing variable:
@@ -2963,6 +3111,7 @@ x = 2
 i := -42
 for i := 0; i < 3; i=i+1 {
     // the i here is different from the i out there
+	print(i)
 }
 
 // (it should still be -42)
