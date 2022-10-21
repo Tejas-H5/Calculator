@@ -2297,6 +2297,7 @@
             return parseChain(text, ctx, lines, T_COMPARISON, parseExpression, parseOpComparison);
         }
 
+        // parses [num][num][num]...
         function parseIndexation(text, ctx, indexes) {
             if (text[ctx.pos] !== "[") {
                 return false;
@@ -2308,7 +2309,7 @@
                 if (!parseExpressionTopLevel(text, ctx, indexes)) return false;
 
                 ctx.pos = advanceWhileWhitespace(text, ctx.pos);
-                if (!text[ctx.pos] === "]") {
+                if (text[ctx.pos] !== "]") {
                     return false;
                 }
                 ctx.pos = advanceWhileWhitespace(text, ctx.pos + 1);
@@ -2424,15 +2425,19 @@
 
             const indexes = [];
             ctx.pos = advanceWhileWhitespace(text, ctx.pos);
-            if (!parseIndexation(text, ctx, indexes)) return true;
+            if (parseIndexation(text, ctx, indexes)) {
+                lines[lines.length - 1] = {
+                    t: T_EXPR_INDEXATION,
+                    start: start,
+                    end: ctx.pos,
+                    expr: lines[lines.length - 1],
+                    indexes: indexes
+                };
+                return true;
+            }
 
-            lines[lines.length - 1] = {
-                t: T_EXPR_INDEXATION,
-                start: start,
-                end: ctx.pos,
-                expr: lines[lines.length - 1],
-                indexes: indexes
-            };
+
+
             return true;
         }
 
@@ -2659,7 +2664,7 @@
         function getKeysInSyntaxOrder(t) {
             switch (t) {
                 case T_BLOCK: return ["body"];
-                case T_EXPR_INDEXATION: return ["expr", "indices"];
+                case T_EXPR_INDEXATION: return ["expr", "indexes"];
                 case T_EXPR:
                 case T_TERM:
                 case T_COMPARISON: return ["termsAndOps"];
@@ -3057,7 +3062,7 @@ graph(g, 0, 1)
             {
                 name: "typical math usecases",
                 input: `
-// most path expressions should be supported by this calculator
+// most math expressions should be supported by this calculator
 print(1 + 2 * 3 + 4^(sin(PI/2)*2), "first")
 
 // do keep in mind that they are floating point numbers and not real numbers though
@@ -3392,7 +3397,7 @@ x = y * x + x`,
         }
 
         // ---- set value
-        input.value = `1 ? 1 : 2`;
+        input.value = `1 + 1`;
         rerender();
         rerenderTests();
 
