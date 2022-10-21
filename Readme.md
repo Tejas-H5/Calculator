@@ -21,7 +21,13 @@ I find it much faster to iterate on javascript + HTML than I do with anything el
 - common math funcs
     - matrix multiplication
 
+- syntax highlighting
+
 ### What do I want to add next?
+
+- lift up indexation and arguments to be applied to arbitrary expressions
+- create a syntax tree we can use as a plan
+
 - range based for loop construct.
     - `for i in [thing]`
     - I dont care for it at the moment

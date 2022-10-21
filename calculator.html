@@ -262,7 +262,10 @@
         }
 
         function makeNumber(n) {
-            return { vt: VT_NUMBER, val: n, astNode: null};
+            return { 
+                vt: VT_NUMBER, val: n, astNode: null, 
+                uuid: Math.random() // purely for debugging purposes
+            };
         }
 
         function makeString(s) {
@@ -533,7 +536,7 @@
             }
         }
 
-        function evaluateUnaryOp(ctx, x) {
+        function evaluateUnaryExpr(ctx, x) {
             const val = evaluateExpression(ctx, x.expr);
             if (val.vt === VT_ERROR) {
                 return val;
@@ -770,7 +773,7 @@
                 fn: (ctx, thing, title) => {
                     ctx.results.push({
                         rt: RT_PRINT,
-                        val: thing,
+                        val: { ...thing },
                         title: (title && title.val) || (thing.astNode && thing.astNode.t === T_IDENT && thing.astNode.text),
                     });
                     return makeNull();
@@ -913,6 +916,8 @@
 
             const body = x.rhs.t === T_BLOCK ? x.rhs : {
                 t: T_BLOCK, 
+                start: x.rhs.start,
+                end: x.rhs.end,
                 body: [x.rhs]
             };
 
@@ -959,7 +964,7 @@
                 }
 
                 for (const k of Object.keys(node)) {
-                    if (node.t === T_ASSIGNMENT && k === "lhs") {
+                    if (node.t === T_ASSIGNMENT && k === "lhs" && node.assignType === ASSIGN_DECLARE) {
                         // skip all variable assignments. we don't want to treat y in f(x) { y := 2 } as a capture
                         continue;
                     }
@@ -1465,8 +1470,8 @@
                 case T_COMPARISON:
                     value = evaluateChain(ctx, x);
                     break;
-                case T_UNARY_OP:
-                    value = evaluateUnaryOp(ctx, x);
+                case T_UNARY_EXPR:
+                    value = evaluateUnaryExpr(ctx, x);
                     break;
                 case T_FUNCTION_CALL:
                     value = evaluateFunctionCall(ctx, x);
@@ -1559,7 +1564,25 @@
                 for (let i = this.currentScope; i >= 0; i--) {
                     if (!this.scopes[i].has(key)) continue;
                     
-                    this.scopes[i].set(key, value);
+                    const existing = this.scopes[i].get(key);
+                    let valSet = false;
+                    if (existing.vt === value.vt) {
+                        // we want to mutate the internal state. we can't do this when they are different types
+                        if (existing.vt === VT_NUMBER) {
+                            existing.val = value.val;
+                            valSet = true;
+                        } else if (existing.vt === VT_TENSOR) {
+                            existing.shape = value.shape;
+                            existing.data = value.data;
+                            valSet = true;
+                        }
+                    } 
+
+                    if (!valSet) {
+                        // fall back to setting value immutably
+                        this.scopes[i].set(key, value);
+                    }
+                    
                     return null;
                 }
 
@@ -1679,6 +1702,7 @@
         const T_OP_COMPARISON = debug ? "T_OP_COMPARISON" : 17;
         const T_COMPARISON = debug ? "T_COMPARISON" : 18;
         const T_LIST = debug ? "T_LIST" : 19;
+        const T_UNARY_EXPR = debug ? "T_UNARY_EXPR" : 20;
 
         const reservedKeywords = [
             "for"
@@ -1909,7 +1933,7 @@
             return true;
         }
 
-        function parseUnaryOp(text, ctx, lines) {
+        function parseUnaryExpr(text, ctx, lines) {
             const start = advanceWhileWhitespace(text, ctx.pos);
             if (start >= text.length) {
                 return false;
@@ -1929,7 +1953,7 @@
             }
 
             lines.push({
-                t: T_UNARY_OP,
+                t: T_UNARY_EXPR,
                 start: start,
                 end: ctx.pos,
                 op: op[0],
@@ -2228,7 +2252,7 @@
             if (parseGroup(text, ctx, lines)) return true;
 
             ctx.pos = start;
-            if (parseUnaryOp(text, ctx, lines)) return true;
+            if (parseUnaryExpr(text, ctx, lines)) return true;
 
             ctx.pos = start;
             if (parseFunctionCall(text, ctx, lines)) return true;
@@ -2295,12 +2319,13 @@
 
         // consider having a new T_BLOCK or something
         function parseBlock(text, ctx, lines) {
-            const body = [];
-
-            ctx.pos = advanceWhileWhitespace(text, ctx.pos);
+            const start = advanceWhileWhitespace(text, ctx.pos);
             if (ctx.pos >= text.length) {
                 return false;
             }
+            ctx.pos = start;
+
+            const body = [];
 
             if (!hasText(text, ctx.pos, "{")) return false;
             ctx.pos = advanceWhileWhitespace(text, ctx.pos + 1);
@@ -2317,6 +2342,8 @@
             ctx.pos += 1;
             lines.push({
                 t: T_BLOCK,
+                start: start,
+                end: ctx.pos,
                 body: body
             })
             return true;
@@ -2413,8 +2440,7 @@
             const expr = [];
             if (!parseComparison(text, ctx, expr)) return false;
 
-            const ternaryStart = advanceWhileWhitespace(text, ctx.pos);
-            ctx.pos = ternaryStart;
+            ctx.pos = advanceWhileWhitespace(text, ctx.pos);
             if (text[ctx.pos] !== "?") {
                 // we only got an expression, that is fine
                 lines.push(expr[0]);
@@ -2442,7 +2468,7 @@
 
             lines.push({
                 t: T_TERNARY,
-                start: ternaryStart,
+                start: expr[0].start,
                 end: ctx.pos,
                 conditional: expr[0],
                 ifTrue: expr[1],
@@ -2621,7 +2647,11 @@
                 case T_OP_TERM:
                     return "color:#FFFFFF;";
                 case T_IDENT: return "color:#FFE03B;font-style:italic;";
-                case T_FOR_LOOP: return "color:#FF00FF;";
+                case T_FOR_LOOP: 
+                case T_BLOCK:
+                    return "color:#FF00FF;";
+                case T_ASSIGNMENT:
+                    return "color:#00FF00";
                 default: return "color:#FFFFFF;";
             }
         }
@@ -2633,7 +2663,7 @@
                 case T_EXPR:
                 case T_TERM:
                 case T_COMPARISON: return ["termsAndOps"];
-                case T_UNARY_OP: return ["op", "expr"]
+                case T_UNARY_EXPR: return ["op", "expr"]
                 case T_FUNCTION_CALL: return ["name", "args"];
                 case T_ASSIGNMENT: return ["lhs", "rhs"];
                 case T_TERNARY: return ["conditional", "ifTrue", "else"];
@@ -2653,47 +2683,51 @@
             let strings = [];
             let pos = 0;
 
+            const advanceHighlightToPos = (advancePos) => {
+                while (pos < advancePos) {
+                    let startPos = pos;
+                    // we wrap whitespace in the comment style. this is because comments are treated as whitespace
+                    pos = advanceWhileWhitespace(text, pos)
+                    if (startPos !== pos) {
+                        strings.push(`<span style="${commentStyle}">`);
+                        strings.push(sanitizeHTML(text.substring(startPos, pos)));
+                        strings.push("</span>")
+                    }
+
+                    // there are also non-whitespace characters that need to have the style of the parent element, so
+                    // we simply don't wrap it in anything
+                    startPos = pos;
+                    while (pos < advancePos && !isWhitespace(text[pos])) {
+                        pos += 1;
+                    }
+                    if (startPos !== pos) {
+                        strings.push(text.substring(startPos, pos));
+                    }
+                }
+            }
+
             // I cant believe this works
             const dfs = (node) => {
+                advanceHighlightToPos(node.start);
 
+                // then we warp the node itself in it's respective style
+                const style = getSyntaxHighlightStyle(node.t);
+                strings.push(`<span style="${style}">`)
+
+                // this should recursively push the inner node text/styles
                 const keys = getKeysInSyntaxOrder(node.t);
                 if (keys === null) {
-                    while (pos < node.start) {
-                        let startPos = pos;
-                        // we wrap whitespace in the comment style. this is because comments are treated as whitespace
-                        pos = advanceWhileWhitespace(text, pos)
-                        if (startPos !== pos) {
-                            strings.push(`<span style="${commentStyle}">`);
-                            strings.push(sanitizeHTML(text.substring(startPos, pos)));
-                            strings.push("</span>")
-                        }
-
-                        // there are also non-whitespace characters that need to have the style of the parent element, so
-                        // we simply don't wrap it in anything
-                        startPos = pos;
-                        while (pos < node.start && !isWhitespace(text[pos])) {
-                            pos += 1;
-                        }
-                        if (startPos !== pos) {
-                            strings.push(text.substring(startPos, pos));
-                        }
+                    if (pos > node.end) {
+                        throw new Error("couldn't highlight syntax, wrong node.start somewhere up the chain");
                     }
-
-                    // now we warp the node itself in it's respective style
-                    const style = getSyntaxHighlightStyle(node.t);
-                    strings.push(`<span style="${style}">`)
                     strings.push(sanitizeHTML(text.substring(pos, node.end)));
                     pos = node.end;
-                    strings.push(`</span>`);
-
-                    if (node.start < pos) {
-                        return "bruh";
-                    }
                 } else {
                     for(const key of keys) {
                         const subNode = node[key];
+
                         if (!subNode) {
-                            return;
+                            throw new Error("subnode was undefined");
                         }
     
                         if (typeof subNode.length === "number") {
@@ -2706,7 +2740,11 @@
                         }
                     }
                 }
-                
+
+                advanceHighlightToPos(node.end);
+
+                // closing tag for the styles we pushed earlier
+                strings.push(`</span>`);
             }
 
             for(let i = 0; i < ast.expressions.length; i++) {
@@ -2716,8 +2754,7 @@
             // if we couldn't AST the file all the way to the end, we should still be displaying all the text
             strings.push(sanitizeHTML(text.substring(pos)));
 
-            syntaxHighlightedView.innerHTML = strings.join("");
-            console.log(strings.join(""));
+            syntaxHighlightedView.innerHTML = strings.join("");    
         }
 
         const onInputChange = () => {
@@ -2754,15 +2791,16 @@
 
             // parse and run code
             const text = input.value;
+
             const ast = parseProgram(text);
+            highlightSyntax(text, ast);
+
             const result = evaluateProgram(ast, text);
 
             // debugFormatAST damages the AST so wn have to run it after both parsing and evaluating the program
             showAstOutput.innerText = JSON.stringify(debugFormatAST(ast, text), null, 4);
             showResultOutput.innerText = JSON.stringify(result, null, 4);
             renderOutputs(result)
-
-            highlightSyntax(text, ast);
         }
 
         function sanitizeHTML(html) {
@@ -3070,7 +3108,8 @@ graph(
 	0, 10
 )
 
-// the graphing only happens after all code is ran. So even though running random_boi is supposed to mutate i, i is still zero
+// the graphing only happens after all code is ran. 
+// So even though running random_boi is supposed to mutate i, i is still zero when we print it here
 print(i)
 `,
                 expected: "{}",
@@ -3353,17 +3392,7 @@ x = y * x + x`,
         }
 
         // ---- set value
-        input.value = `1 + 1`;
-
-`
-funcs := <>;
-for i := 0; i < 3; i+=1 {
-	f(x) := sin(i*x)
-	funcs += f;
-}
-
-graph(funcs, 0, 3)
-`;
+        input.value = `1 ? 1 : 2`;
         rerender();
         rerenderTests();
 
