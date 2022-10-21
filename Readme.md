@@ -4,6 +4,8 @@ It is a calculator that was made by actually parsing an AST, and not by calling 
 It isn't actually supposed to be mathematically accurate, it is just practice for writing a parser and an evaluator.
 I find it much faster to iterate on javascript + HTML than I do with anything else
 
+Try it out here: https://el-tejaso.github.io/Calculator/calculator.html
+
 ### Current feature set:
 - Operators
     - `+ - * / %`
