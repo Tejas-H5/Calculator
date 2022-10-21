@@ -297,7 +297,7 @@
             if (v) {
                 return v;
             }
-            v = ctx.variables.get(name);
+            v = ctx.variables.get(ctx, name);
             if (v) {
                 return v;
             }
@@ -456,10 +456,6 @@
             }
 
             if (!binOp) {
-                // find the largest common shape, and try to multiply component-wise
-                if (t1.vt === VT_TENSOR) {
-                }
-
                 return makeErr(
                     ctx,
                     `the operation ${vtToString(t1)} ${op.text} ${vtToString(t2)} doesn't exist yet` 
@@ -483,6 +479,9 @@
                 }
 
                 val = applyOperator(ctx, val, val2, x.termsAndOps[i - 1]);
+                if (val === VT_ERROR) {
+                    throw "what";
+                }
             }
             return val;
         }
@@ -814,7 +813,7 @@
         const builtinFunctions = Object.keys(builtinFunctionsMap);
 
         function evaluateUserDefFunctionCall(ctx, x, name) {
-            const func = ctx.variables.get(name);
+            const func = ctx.variables.get(ctx, name);
             if (!func) {
                 return makeErr(ctx, `function '${name}' not found`);
             }
@@ -842,7 +841,7 @@
 
             // set captures to values
             for (let i = 0; i < func.captures.length; i++) {
-                ctx.variables.set(ctx, func.captures[i][0], func.captures[i][1], ASSIGN_DECLARE);
+                ctx.variables.set(ctx, func.captures[i][0], func.captures[i][1], ASSIGN_DECLARE, true);
             }
 
             const val = evaluateBlock(ctx, func.body);;
@@ -941,23 +940,23 @@
                 }
 
                 if (node.t === T_IDENT) {
-                    if (argNames.includes(node.text)) return;
+                    const varName = node.text;
+                    if (argNames.includes(varName)) return;
 
-                    if (!captures.find(x => x[0] === node.text)) {
-                        const val = evaluateVariable(ctx, node, false);
-                        if (val === null) {
-                            // ignore errors, they are usually from identifiers not being defined
-                            return;
+                    if (!captures.find(x => x[0] === varName)) {
+                        const valRef = ctx.variables.getRef(ctx, varName);
+                        if (valRef.vt === VT_ERROR) {
+                            return valRef;
                         }
 
                         // // push a copy
                         // if (val.vt === VT_TENSOR) {
-                        //     captures.push([node.text, copyTensor(val)]);
+                        //     captures.push([varName, copyTensor(val)]);
                         // } else if (val.vt === VT_NUMBER) {
-                        //     captures.push([node.text, makeNumber(val.val)]);
+                        //     captures.push([varName, makeNumber(val.val)]);
                         // } else {
                             // push a reference (!!!)
-                            captures.push([node.text, val]);
+                            captures.push([varName, valRef]);
                         //}
                     }
                     return;
@@ -1532,55 +1531,51 @@
 
                 return false;
             }
-            get(key) {
+            getRef(ctx, key) {
                 for(let i = this.currentScope; i >= 0; i--) {
                     if (this.scopes[i].has(key)) {
                         return this.scopes[i].get(key);
                     }
                 }
 
-                return null;
+                return makeErr(ctx, `couldn't find variable ${key}`);
             }
-            set(ctx, key, value, assignType) {
+            get(ctx, key) {
+                const ref = this.getRef(ctx, key);
+                if (ref === null) return ref;
+
+                return ref.currentValue;
+            }
+            set(ctx, key, value, assignType, setRef = false) {
                 // if declaration, create variable in local scope
                 if (assignType === ASSIGN_DECLARE) {
                     const currentScope = this.scopes[this.currentScope];
                     if (currentScope.has(key)) 
-                        return makeErr(ctx, `variable ${key} already defined, with value: ${valueToString(currentScope.get(key))}`);
+                        return makeErr(ctx, `variable ${key} already defined, with value: ${valueToString(currentScope.get(key).currentValue)}`);
                         
-                    currentScope.set(key, value);
+                    if (setRef) {
+                        currentScope.set(key, value);
+                    } else {
+                        currentScope.set(key, { currentValue: value });
+                    }
                     return null;
                 }
 
+                const existingRef = this.getRef(ctx, key);
                 if (assignType === ASSIGN_INCREMENT) {
-                    const existing = this.get(key);
-                    value = applyOperator(ctx, existing, value, { text: "+" });
+                    value = applyOperator(ctx, existingRef.currentValue, value, { text: "+" });
                 } else if (assignType === ASSIGN_DECREMENT) {
-                    const existing = this.get(key);
-                    value = applyOperator(ctx, existing, value, { text: "-" });
+                    value = applyOperator(ctx, existingRef.currentValue, value, { text: "-" });
                 }
                 
                 // set variable in whatever scope it is in
                 for (let i = this.currentScope; i >= 0; i--) {
                     if (!this.scopes[i].has(key)) continue;
                     
-                    const existing = this.scopes[i].get(key);
-                    let valSet = false;
-                    if (existing.vt === value.vt) {
-                        // we want to mutate the internal state. we can't do this when they are different types
-                        if (existing.vt === VT_NUMBER) {
-                            existing.val = value.val;
-                            valSet = true;
-                        } else if (existing.vt === VT_TENSOR) {
-                            existing.shape = value.shape;
-                            existing.data = value.data;
-                            valSet = true;
-                        }
-                    } 
-
-                    if (!valSet) {
-                        // fall back to setting value immutably
+                    if (setRef) {
                         this.scopes[i].set(key, value);
+                    } else {
+                        existingRef.currentValue = value;
                     }
                     
                     return null;
@@ -1665,7 +1660,7 @@
                 case VT_STRING:
                     return v.val;//"\"" + v.val.toString().replace(/"/g, "\\\"") + "\"";
                 case VT_FUNCTION:
-                    return v.text + (v.captures.length === 0 ? "" : " where " + v.captures.map(x => x[0] + "=" + valueToString(x[1])).join(", "));
+                    return v.text + (v.captures.length === 0 ? "" : " where " + v.captures.map(x => x[0] + "=" + valueToString(x[1].currentValue)).join(", "));
                 case VT_LIST:
                     return "<" + v.items.map(i => valueToString(i)).join(",\n") + ">";
                 default:
@@ -1682,7 +1677,6 @@
 
         // ---- parser
 
-        const T_EXPR = debug ? "T_EXPR" : 0;
         const T_NUMBER = debug ? "T_NUMBER" : 1;
         const T_OP_EXPR = debug ? "T_OP_EXPR" : 2;
         const T_OP_TERM = debug ? "T_OP_TERM" : 3;
@@ -1703,6 +1697,7 @@
         const T_COMPARISON = debug ? "T_COMPARISON" : 18;
         const T_LIST = debug ? "T_LIST" : 19;
         const T_UNARY_EXPR = debug ? "T_UNARY_EXPR" : 20;
+        const T_EXPR = debug ? "T_EXPR" : 21;
 
         const reservedKeywords = [
             "for"
@@ -2867,7 +2862,7 @@
                     programCtx.variables.pushStackFrame();
                     // set captures to values
                     for (let i = 0; i < func.captures.length; i++) {
-                        programCtx.variables.set(programCtx, func.captures[i][0], func.captures[i][1], ASSIGN_DECLARE);
+                        programCtx.variables.set(programCtx, func.captures[i][0], func.captures[i][1], ASSIGN_DECLARE, true);
                     }
 
                     const fRef = makeNumber(0);
