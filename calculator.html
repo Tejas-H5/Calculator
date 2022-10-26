@@ -567,127 +567,127 @@
         const builtinFunctionsMap = {
             abs: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.abs(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.abs(...getVals(args)))
             },
             acos: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.acos(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.acos(...getVals(args)))
             },
             acosh: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.acosh(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.acosh(...getVals(args)))
             },
             asin: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.asin(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.asin(...getVals(args)))
             },
             asinh: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.asinh(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.asinh(...getVals(args)))
             },
             atan: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.atan(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.atan(...getVals(args)))
             },
             atanh: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.atanh(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.atanh(...getVals(args)))
             },
             atan2: {
                 args: [{ vt: VT_NUMBER }, { vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.atan2(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.atan2(...getVals(args)))
             },
             ceil: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.ceil(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.ceil(...getVals(args)))
             },
             cos: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.cos(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.cos(...getVals(args)))
             },
             cosh: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.cosh(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.cosh(...getVals(args)))
             },
             exp: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.exp(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.exp(...getVals(args)))
             },
             floor: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.floor(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.floor(...getVals(args)))
             },
             hypot: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.hypot(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.hypot(...getVals(args)))
             },
             imul: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.imul(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.imul(...getVals(args)))
             },
             log: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.log(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.log(...getVals(args)))
             },
             log1p: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.log1p(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.log1p(...getVals(args)))
             },
             log10: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.log10(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.log10(...getVals(args)))
             },
             log2: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.log2(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.log2(...getVals(args)))
             },
             max: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.max(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.max(...getVals(args)))
             },
             min: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.min(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.min(...getVals(args)))
             },
             pow: {
                 args: [{ vt: VT_NUMBER }, { vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.pow(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.pow(...getVals(args)))
             },
             random: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.random(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.random(...getVals(args)))
             },
             round: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.round(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.round(...getVals(args)))
             },
             sign: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.sign(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.sign(...getVals(args)))
             },
             sin: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.sin(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.sin(...getVals(args)))
             },
             sinh: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.sinh(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.sinh(...getVals(args)))
             },
             sqrt: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.sqrt(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.sqrt(...getVals(args)))
             },
             tan: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.tan(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.tan(...getVals(args)))
             },
             tanh: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.tanh(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.tanh(...getVals(args)))
             },
             trunc: {
                 args: [{ vt: VT_NUMBER }],
-                fn: (ctx, ...args) => makeNumber(Math.trunc(getVals(args)))
+                fn: (ctx, ...args) => makeNumber(Math.trunc(...getVals(args)))
             },
 
             // ---- builtins I had to write myself
