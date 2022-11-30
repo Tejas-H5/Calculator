@@ -1943,7 +1943,7 @@
             }
 
             ctx.pos = advanceWhileWhitespace(text, ctx.pos);
-            if (!parseExpressionTopLevel(text, ctx, expr)) {
+            if (!parseThing(text, ctx, expr)) {
                 return false;
             }
 
@@ -2812,6 +2812,27 @@
                 .replace(/'/g, "&#039;");
         }
 
+
+        function renderSVG(options) {
+            const {
+                paths, texts, rects, 
+                w, h, id
+            } = options;
+
+            return (
+                `<svg id="${id || (1000 * Math.random()).toFixed(0)}" class="p-5 graph" style="width:${w}px;height:${h}px;">
+                    <text class="mouseover mouse-pos-text" text-anchor="start" style="font-size:0.8em;"></text>
+                    <path class="mouseover crosshair-path-1" stroke="grey" stroke-width="1"/>
+                    <path class="mouseover crosshair-path-2" stroke="grey" stroke-width="1"/>
+
+                    ${!paths ? "" : paths.map(p => `<path class="${p.class || ""}" d="${p.p}" stroke="${p.s}" stroke-width="${p.w}px" fill="none"></path>`).join("\n")}
+                    ${!texts ? "" : texts.map(t => `<text class="${t.class || ""}"text-anchor="${t.a}" x="${t.x}" y=${t.y} style="font-size:0.8em">${t.t}</text>`).join("\n")}
+                    ${!rects ? "" : rects.map(r => `<rect class="${r.class || ""}" x=${r.x} y="${r.y}" width="${r.w}" height=${r.h} fill="${r.fill || "transparent"}" ></rect>`)}
+                    </svg>`
+            );
+        }
+
+
         function renderOutputs(programCtx) {
             function p(innerHTML, className = "", el="p") {
                 return `<${el} class="p-5 m-0 code ${className}">${sanitizeHTML(innerHTML)}</${el}>`;
@@ -2853,8 +2874,6 @@
                 const n = Math.floor(w);
                 const points = Array(n * result.functions.length);
                 
-                
-
                 // find graph bounds by evaluating functions
                 let min = -20, max = -20;
                 for(let fIndex = 0; fIndex < result.functions.length; fIndex++) {
@@ -2941,15 +2960,12 @@
 
                 stdout.innerHTML += wrapInTitle(
                     "graph of " + result.functions.map(f => f.name).join(", "),
-                    `<svg id="graph-${i}" class="p-5 graph" style="width:${w}px;height:${h}px;">
-                        ${paths.map(p => `<path d="${p.p}" stroke="${p.s}" stroke-width="${p.w}px" fill="none"></path>`).join("\n")}
-                        ${texts.map(t => `<text text-anchor="${t.a}" x="${t.x}" y=${t.y} style="font-size:0.8em">${t.t}</text>`).join("\n")}
-                        
-                        <text class="mouseover mouse-pos-text" text-anchor="start" style="font-size:0.8em;"></text>
-                        <path class="mouseover crosshair-path-1" stroke="grey" stroke-width="1"/>
-                        <path class="mouseover crosshair-path-2" stroke="grey" stroke-width="1"/>
-                        <rect x="${leftPad}" y="${topPad}" width="${w}" height="${h - bottomPad - topPad}" fill="transparent" class="graph-rect"></rect>
-                    </svg>`
+                    renderSVG({
+                        w: w, h: h, id: "graph-" + i,
+                        paths: paths,
+                        texts: texts,
+                        rects: [{ x: leftPad, y: topPad, w: w, h: h - bottomPad - topPad, class: "graph-rect" }]
+                    })
                 ) + `<div class="code indent-3"><b>Bounds: </b>${domainStart} < x < ${domainEnd}\t | \t${min} < y < ${max}</div>`;
 
                 setTimeout(() => {
@@ -3021,6 +3037,13 @@
         // ---- add testcases,
 
         const testcases = [
+            {
+                name: "basic math",
+                input: `
+// was failing for the longest time and I didnt even notice lol
+-1 + 1`,
+                expected: "0"
+            },
             {
                 name: "scope capturing",
                 input: `
