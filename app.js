@@ -1,26 +1,94 @@
-// <!-- Not intended to be an actual calculator. It is practice for creating a parser to making a
-// programming language that I have been thinking about for a while now. This won't be the actual language, nor
-// will it be complete, but I will try to add some cool features. I don't intend to spend any
-// more than around 4 days on this site. (actually I ended up spending 2-3 weeks on it, and I will probably keep adding to it
-// if I actually end up using it) -->
+appendStyles(`
+body {
+    font-family: 'Source Code Pro', monospace;
+}
+
+*[hidden] {
+    display: none !important;
+}
+
+.flex-row {
+    display: flex;
+    flex-direction: row;
+}
+
+.label {
+    max-width: 200px;
+}
+
+
+
+
+
+
+body :focus {
+    outline: none;
+}
+
+textarea {
+    border: none;
+    overflow: hidden;
+    outline: none;
+
+    margin: 0px;
+
+    -webkit-box-shadow: none;
+    -moz-box-shadow: none;
+    box-shadow: none;
+
+    resize: none; /*remove the resize handle on the bottom right*/
+}
+
+
+
+
+.error {
+    color: #ff0000;
+}
+
+th,
+td {
+    outline: black solid 1px;
+}
+
+#testcases button {
+    margin: 5px;
+    display: block;
+}
+
+pre {
+    margin: 0px;
+}
+
+.text-output {
+    padding: 5px; 
+}
+
+.p-5 { padding: 5px; }
+.m-0 { margin: 0; }
+
+.indent-1 { margin-left: 4rem; }
+.indent-2 { margin-left: 8rem; }
+.indent-3 { margin-left: 12rem; }
+
+
+
+.graph-rect {
+    cursor: crosshair;
+}
+`)
+
 
 function App(mountPoint) {
-    const { component:app, zoneModeToggleBtn } = createComponent(
+    const styles = getStyles();
+
+    const { app } = createComponent(
         mountPoint,
-        `<div class="app">
+        `<style>
+${styles}
+</style>
+        <div class="app" --id="app">
             <div style="font-size:28px;font-weight:bold;padding-left:10px;">Calculator</div>
-            <div class="not-important" style="padding: 10px">
-                <div>
-                    <p>
-                        This was originally supposed to be a simple calculator that only supported simple +-*/ operations and brackets, but I
-                        got a bit carried away and now it's a programming language???
-                        Type something into the box, or click on one of the examples in the table below.
-                    </p>
-                </div>
-                <div style="margin-top: 50px; padding: 10px">
-                    <button --id="zoneModeToggleBtn" style="width: unset">Remove clutter</button>
-                </div>
-            </dov>
         </div>`
     );
 
@@ -39,25 +107,10 @@ function App(mountPoint) {
         codeEditor.setCode(testCase.input.trim())
     }
 
-    zoneModeToggleBtn.addEventListener("click", () => {
-        app.classList.toggle("hide-not-important")
-    });
-
-    const hideNotImportantOnEsc = (e) => {
-        if (e.key === "Escape") {
-            app.classList.toggle("hide-not-important");
-        }
-    };
-
-    document.addEventListener("keydown", hideNotImportantOnEsc);
-
     testingHarness.renderTests(testcases, false);
 
-    return {
-        cleanup: () => {
-            document.removeEventListener("keydown", hideNotImportantOnEsc);
-        }
-    }
+    codeEditor.setCode(`// type your code here\n1 + 1`)
+
 }
 
 

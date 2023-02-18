@@ -1,3 +1,145 @@
+appendStyles(`
+.testcase-button:hover {
+    background: rgba(0,0,0,0.3);
+    cursor: pointer;
+}
+
+.failing {
+    background: rgba(255,0,0,0.5);
+}
+
+.passing {
+    background: rgba(0,255,0,0.5);
+}
+
+.example-code {
+    white-space:pre-wrap;
+}
+
+`)
+
+
+function TestingHarness(mountPoint) {
+    const { testTable } = createComponent(
+        mountPoint,
+        `<div style="padding: 10px">
+            <div style="margin-top: 20px">
+                <h3 title="these are really test cases">Examples</h3>
+                <table --id="testTable" style="width: 100%"></table>
+            </div>
+        </div>`
+    );
+
+    const state = {
+        onTestcaseSelect: (testcase) => {},
+        renderTests: (testCases, onlyShowInteresting) => {
+            renderTests(state, testTable, testCases, onlyShowInteresting);
+        }
+    };
+
+    return state;
+}
+
+// TODO: componentize this (the old codebase was vanillaJS, so it was doing string building everywhere)
+function renderTests(state, mountPoint, testcases, onlyShowInteresting) {
+    let passes = 0,
+        fails = 0,
+        manual = 0;
+
+    let tests = testcases.filter((testcase) => (onlyShowInteresting ? testcase.alwaysShow : true));
+
+    let testcaseTableHTML =
+        `
+        <tr><th>Input</th><th>Output</th></tr>
+    ` +
+        tests
+            .map((testcase, i) => {
+                let output = "",
+                    isPassing = false;
+
+                try {
+                    const text = testcase.input;
+                    const ast = parseProgram(text);
+                    const results = evaluateProgram(ast, text);
+                    output = valueToString(results.programResult);
+                    isPassing = testcase.expected.replace(/\s/g, "") === output.replace(/\s/g, "");
+                } catch (e) {
+                    output = "Exception";
+                    isPassing = false;
+                }
+
+                if (!testcase.isVisualTest) {
+                    if (isPassing) {
+                        passes++;
+                    } else {
+                        fails++;
+                    }
+                } else {
+                    manual++;
+                }
+
+                return `
+                <tr>
+                    <td class="testcase-button" data-testcase-id="${i}">
+                        <h4>${sanitizeHTML(testcase.name)}</h4>
+                        <p class="example-code" title="click to preview this example">
+                            ${sanitizeHTML(testcase.input)}
+                        </p>
+                    </td>
+                    <td class="${testcase.isVisualTest ? "" : isPassing ? "passing" : "failing"}" title="${
+                    testcase.isVisualTest
+                        ? "this test must be manually inspected"
+                        : isPassing
+                        ? "this testcase is passing"
+                        : "this testcase is failing"
+                }">
+                        ${
+                            isPassing
+                                ? truncate(sanitizeHTML(output), 70)
+                                : `
+                                <h4>Got:</h4>
+                                <p>
+                                    ${sanitizeHTML(output)}
+                                </p>
+                                <h4>Expected:</h4>
+                                <p>
+                                    ${sanitizeHTML(testcase.expected)}
+                                </p>
+                            `
+                        }
+                    </td>
+                </tr>`;
+            })
+            .join("\n");
+
+    if (!onlyShowInteresting) {
+        testcaseTableHTML =
+            `
+            <p>
+                Passing: ${passes}, Failing: ${fails}, Requiring manual inspection: ${manual};
+            </p>
+        ` + testcaseTableHTML;
+    }
+
+    mountPoint.innerHTML = testcaseTableHTML;
+    for (let id = 0; id < tests.length; id++) {
+        const button = mountPoint.querySelector(`.testcase-button[data-testcase-id="${id}"]`);
+        button.addEventListener("click", (e) => {
+            state.onTestcaseSelect(tests[parseInt(button.getAttribute("data-testcase-id"))]);
+        });
+    }
+}
+
+function truncate(t, len) {
+    if (t.length > len) {
+        return t.substring(0, len) + "...";
+    }
+
+    return t;
+}
+
+
+
 // ---- add testcases,
 
 const testcases = [
@@ -283,124 +425,3 @@ x = y * x + x`,
             "	shape: 10x10, data: [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]"
     }
 ];
-
-function TestingHarness(mountPoint) {
-    const { testTable } = createComponent(
-        mountPoint,
-        `
-
-        <div style="padding: 10px" class="not-important">
-            <div style="margin-top: 20px">
-                <h3 title="these are really test cases">Examples</h3>
-                <table --id="testTable" style="width: 100%"></table>
-            </div>
-        </div>`
-    );
-
-    const state = {
-        onTestcaseSelect: (testcase) => {},
-        renderTests: (testCases, onlyShowInteresting) => {
-            renderTests(state, testTable, testCases, onlyShowInteresting);
-        }
-    };
-
-    return state;
-}
-
-// TODO: componentize this (the old codebase was vanillaJS, so it was doing string building everywhere)
-function renderTests(state, mountPoint, testcases, onlyShowInteresting) {
-    let passes = 0,
-        fails = 0,
-        manual = 0;
-
-    let tests = testcases.filter((testcase) => (onlyShowInteresting ? testcase.alwaysShow : true));
-
-    let testcaseTableHTML =
-        `
-        <tr><th>Input</th><th>Output</th></tr>
-    ` +
-        tests
-            .map((testcase, i) => {
-                let output = "",
-                    isPassing = false;
-
-                try {
-                    const text = testcase.input;
-                    const ast = parseProgram(text);
-                    const results = evaluateProgram(ast, text);
-                    output = valueToString(results.programResult);
-                    isPassing = testcase.expected.replace(/\s/g, "") === output.replace(/\s/g, "");
-                } catch (e) {
-                    output = "Exception";
-                    isPassing = false;
-                }
-
-                if (!testcase.isVisualTest) {
-                    if (isPassing) {
-                        passes++;
-                    } else {
-                        fails++;
-                    }
-                } else {
-                    manual++;
-                }
-
-                return `
-                <tr>
-                    <td class="testcase-button" data-testcase-id="${i}">
-                        <h4>${sanitizeHTML(testcase.name)}</h4>
-                        <p class="code" title="click to put this code into the calculator">
-                            ${sanitizeHTML(testcase.input)}
-                        </p>
-                    </td>
-                    <td class="${testcase.isVisualTest ? "" : isPassing ? "passing" : "failing"}" title="${
-                    testcase.isVisualTest
-                        ? "this test must be manually inspected"
-                        : isPassing
-                        ? "this testcase is passing"
-                        : "this testcase is failing"
-                }">
-                        ${
-                            isPassing
-                                ? truncate(sanitizeHTML(output), 70)
-                                : `
-                                <h4>Got:</h4>
-                                <p>
-                                    ${sanitizeHTML(output)}
-                                </p>
-                                <h4>Expected:</h4>
-                                <p>
-                                    ${sanitizeHTML(testcase.expected)}
-                                </p>
-                            `
-                        }
-                    </td>
-                </tr>`;
-            })
-            .join("\n");
-
-    if (!onlyShowInteresting) {
-        testcaseTableHTML =
-            `
-            <p>
-                Passing: ${passes}, Failing: ${fails}, Requiring manual inspection: ${manual};
-            </p>
-        ` + testcaseTableHTML;
-    }
-
-    mountPoint.innerHTML = testcaseTableHTML;
-    for (let id = 0; id < tests.length; id++) {
-        const button = mountPoint.querySelector(`.testcase-button[data-testcase-id="${id}"]`);
-        button.addEventListener("click", (e) => {
-            state.onTestcaseSelect(tests[parseInt(button.getAttribute("data-testcase-id"))]);
-        });
-    }
-}
-
-function truncate(t, len) {
-    if (t.length > len) {
-        return t.substring(0, len) + "...";
-    }
-
-    return t;
-}

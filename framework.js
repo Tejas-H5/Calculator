@@ -226,3 +226,12 @@ const onDrag = (domNode, { onDragStart, onDrag, onDragEnd }) => {
       onDragEnd && onDragEnd(deltaX, deltaY);
     }
 }
+
+// Allows styles to be defined across files and closer to their components / points of concern rather than in a single css file
+const styleCollector = [];
+function appendStyles(text) {
+    styleCollector.push(text);
+}
+function getStyles() {
+    return styleCollector.join("\n");
+}
