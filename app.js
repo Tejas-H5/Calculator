@@ -40,8 +40,6 @@ textarea {
 }
 
 
-
-
 .error {
     color: #ff0000;
 }
@@ -71,8 +69,6 @@ pre {
 .indent-2 { margin-left: 8rem; }
 .indent-3 { margin-left: 12rem; }
 
-
-
 .graph-rect {
     cursor: crosshair;
 }
@@ -82,18 +78,26 @@ pre {
 function App(mountPoint) {
     const styles = getStyles();
 
-    const { app } = createComponent(
+    const { app, orientationPoint } = createComponent(
         mountPoint,
         `<style>
             ${styles}
         </style>
         <div class="app" --id="app">
+            <div --id="orientationPoint" style="display: flex; flex-direction: column;"></div>
         </div>`
     );
 
-    const codeEditor = CodeEditor(app);
-    const { renderOutputs: renderCalculationResult } = CalculationRenderer(app);
+    const codeEditor = CodeEditor(orientationPoint);
+    const { renderOutputs: renderCalculationResult } = CalculationRenderer(orientationPoint);
+    const { orientationBtn } = createComponent(
+        app, 
+        `<div>
+            <button --id="orientationBtn">Orientation</button>
+        </div>`
+    );
     const testingHarness = TestingHarness(app);
+
 
     codeEditor.onCodeChanged = (text, ast) => {
         // astDebug.innerText = JSON.stringify(ast, null, 4);
@@ -106,10 +110,16 @@ function App(mountPoint) {
         codeEditor.setCode(testCase.input.trim())
     }
 
+    orientationBtn.addEventListener("click", () => {
+        if (orientationPoint.style.flexDirection === "row") {
+            orientationPoint.style.flexDirection = "column"
+        } else {
+            orientationPoint.style.flexDirection = "row";
+        }
+    });
+
     testingHarness.renderTests(testcases, false);
-
     codeEditor.setCode(`// type your code here. Or click on some examples below \n1 + 1`)
-
 }
 
 

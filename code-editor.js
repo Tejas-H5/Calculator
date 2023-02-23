@@ -46,8 +46,11 @@ appendStyles(`
 .input.editing,
 .input.highlighting {
     top: 0; left: 0;
-    min-width: 100%;
-    height: calc(100% - 5px);
+
+    /* That 20 px is the left and right padding. TODO: find a better way  */
+
+    min-width: calc( 100% - 20px );
+    height: calc( 100% - 5px );
     padding: 0;
     padding-left: 10px;
     padding-top: 5px;
@@ -87,7 +90,7 @@ function CodeEditor(mountPoint) {
 
             state.onCodeChanged(text, ast);
         },
-        getText: () => input.value
+        getText: () => input.value,
     }
 
     const textChanged = () => state.setCode(input.value);
