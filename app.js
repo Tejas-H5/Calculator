@@ -85,10 +85,9 @@ function App(mountPoint) {
     const { app } = createComponent(
         mountPoint,
         `<style>
-${styles}
-</style>
+            ${styles}
+        </style>
         <div class="app" --id="app">
-            <div style="font-size:28px;font-weight:bold;padding-left:10px;">Calculator</div>
         </div>`
     );
 
@@ -109,7 +108,7 @@ ${styles}
 
     testingHarness.renderTests(testcases, false);
 
-    codeEditor.setCode(`// type your code here\n1 + 1`)
+    codeEditor.setCode(`// type your code here. Or click on some examples below \n1 + 1`)
 
 }
 

@@ -41,23 +41,22 @@ appendStyles(`
     caret-color: white;
 }
 
-.input.highlighting {
-    z-index: 0;
-    
-}
-
 /* Someone else's very clever approach to syntax highlighting that I copied:
      https://css-tricks.com/creating-an-editable-textarea-that-supports-syntax-highlighted-code/ */
 .input.editing,
 .input.highlighting {
-    position: absolute;
     top: 0; left: 0;
-    width: 100%;
+    min-width: 100%;
     height: calc(100% - 5px);
     padding: 0;
-    padding-left: 5px;
+    padding-left: 10px;
     padding-top: 5px;
     border: 0;
+}
+
+.input.highlighting {
+    z-index: 0;
+    padding-right: 10px;
 }
 `)
 
@@ -69,8 +68,8 @@ function CodeEditor(mountPoint) {
         `<div style="display: flex; flex-direction: row">
             <div --id="lineNumbers" class="code med line-numbers"></div>
             <div style="flex: 1; position:relative;">
-                <textarea --id="input" class="input editing code med" spellcheck="false"></textarea>
                 <div class="input highlighting code med" --id="syntaxHighlightedView"></div>
+                <textarea --id="input" class="input editing code med" spellcheck="false" style="position: absolute;"></textarea>
             </div>
         </div>`
     );
