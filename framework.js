@@ -5,8 +5,12 @@ const remove = (arr, obj) => {
 
     arr.splice(index, 1);
     return obj;
-}
-const assert = (trueVal, msg) => { if (!trueVal) { throw new Error(msg); } }
+};
+const assert = (trueVal, msg) => {
+    if (!trueVal) {
+        throw new Error(msg);
+    }
+};
 
 /** @returns {Object<string, HTMLElement>} */
 const createComponent = (mountPoint, html) => {
@@ -14,21 +18,22 @@ const createComponent = (mountPoint, html) => {
     createDiv.innerHTML = html.trim();
 
     const selectedNodes = {};
-    createDiv.querySelectorAll("[--id]")
-        .forEach(sel => {
-            const name = sel.getAttribute("--id");
-            selectedNodes[name] = sel;
-            sel.removeAttribute("--id");
-        });
-    
-    selectedNodes["component"] = createDiv.childNodes[0];
+    createDiv.querySelectorAll("[--id]").forEach((sel) => {
+        const name = sel.getAttribute("--id");
+        selectedNodes[name] = sel;
+        sel.removeAttribute("--id");
+    });
 
-    for(const c of createDiv.childNodes) {
-        mountPoint.appendChild(c);
+    selectedNodes["root"] = createDiv.childNodes[0];
+
+    if (mountPoint) {
+        for (const c of createDiv.childNodes) {
+            mountPoint.appendChild(c);
+        }
     }
-    
+
     return selectedNodes;
-}
+};
 
 const createEvent = () => {
     const handlers = [];
@@ -37,12 +42,12 @@ const createEvent = () => {
     // I wasn't able to find a good way to observe a component and disconnect it via an event,
     // so I am doing it like this.
     const cleanHandlers = () => {
-        for(let i = handlers.length - 1; i >= 0; i--) {
+        for (let i = handlers.length - 1; i >= 0; i--) {
             if (!handlers[i][0].isConnected) {
                 handlers.splice(i, 1);
             }
         }
-    }
+    };
 
     const invoke = (...args) => {
         if (invokingEvent) {
@@ -52,19 +57,22 @@ const createEvent = () => {
         invokingEvent = true;
         try {
             cleanHandlers();
-            for(let i = handlers.length - 1; i >= 0; i--) {
+            for (let i = handlers.length - 1; i >= 0; i--) {
                 handlers[i][1](...args);
             }
         } finally {
             invokingEvent = false;
         }
-    }
+    };
 
     // if several dom nodes get unsubscribed but this event is never invoked later, then we have leaked memory
     const subscribe = (domNode, callback, ...args) => {
-        assert(domNode instanceof HTMLElement, "events must be subscribed to dom elements, so they can be automatically unsubscribed");
+        assert(
+            domNode instanceof HTMLElement,
+            "events must be subscribed to dom elements, so they can be automatically unsubscribed"
+        );
 
-        // Avoid the case where UI elements are constantly created and destroyed, and 
+        // Avoid the case where UI elements are constantly created and destroyed, and
         // they keep subscribing to an event that is never fired and therefore never cleaned.
         cleanHandlers();
 
@@ -75,13 +83,14 @@ const createEvent = () => {
         } finally {
             invokingEvent = false;
         }
-    }
+    };
 
     return [subscribe, invoke];
-}
+};
 
 const createState = (initialState) => {
-    let state = initialState, invokingEvent = false;
+    let state = initialState,
+        invokingEvent = false;
 
     const [subscribe, invoke] = createEvent();
 
@@ -95,17 +104,18 @@ const createState = (initialState) => {
 
         state = val;
         invoke(state);
-    }
+    };
 
     const subscribeWrapper = (domNode, callback) => {
-        subscribe(domNode, callback, state)
-    }
+        subscribe(domNode, callback, state);
+    };
 
-    return [ get, set, subscribeWrapper ];
-}
+    return [get, set, subscribeWrapper];
+};
 
 const createAnimation = (animateFunc) => {
-    let t0, started = false;
+    let t0,
+        started = false;
 
     const animate = (t) => {
         if (t0 === null) {
@@ -113,7 +123,7 @@ const createAnimation = (animateFunc) => {
         } else {
             let deltaTimeSeconds = (t - t0) / 1000;
             t0 = t;
-    
+
             if (animateFunc(deltaTimeSeconds)) {
                 started = false;
                 return;
@@ -121,61 +131,70 @@ const createAnimation = (animateFunc) => {
         }
 
         window.requestAnimationFrame(animate);
-    }
-    
+    };
+
     const startAnimation = () => {
         if (started) return;
         started = true;
         t0 = null;
 
         window.requestAnimationFrame(animate);
-    }
+    };
 
     return startAnimation;
-}
+};
 
 const renderList = (mountPoint, wantedCount, renderFn, ...args) => {
     while (mountPoint.childNodes.length < wantedCount) {
         renderFn(mountPoint, ...args);
     }
-    
-    while (mountPoint.childNodes.length > wantedCount) {
-        mountPoint.removeChild(mountPoint.childNodes[mountPoint.childNodes.length - 1])
-    }
-}
 
-const renderKeyedList = (mountPoint, listElements, newElementsBuffer, keyNodeMap, keyFn, renderFn, ...args) => {
-    for(const data of keyNodeMap.values()) {
+    while (mountPoint.childNodes.length > wantedCount) {
+        mountPoint.removeChild(mountPoint.childNodes[mountPoint.childNodes.length - 1]);
+    }
+};
+
+const renderKeyedList = (
+    mountPoint,
+    listElements,
+    newElementsBuffer,
+    keyNodeMap,
+    keyFn,
+    renderFn,
+    ...args
+) => {
+    for (const data of keyNodeMap.values()) {
         data.shouldDelete = true;
     }
 
     newElementsBuffer.splice(0, newElementsBuffer.length);
 
-    for(const obj of listElements) {
+    for (const obj of listElements) {
         const key = keyFn(obj);
         if (!keyNodeMap.has(key)) {
-            const { component: newEl } = renderFn(mountPoint, obj, ...args);
+            const { root: newEl } = renderFn(null, obj, ...args);
             keyNodeMap.set(key, {
                 el: newEl,
-                shouldDelete: false,
+                shouldDelete: false
             });
         }
-        
+
         const data = keyNodeMap.get(key);
         data.shouldDelete = false;
         newElementsBuffer.push(data.el);
     }
 
-    for(const [key, data] of keyNodeMap.entries()) {
+    for (const [key, data] of keyNodeMap.entries()) {
         if (data.shouldDelete) {
             keyNodeMap.delete(key);
         }
     }
 
+    // not redundant. It dismounts all children at once, so that when we call this again,
+    // we aren't constantly dismounts and moving children
     mountPoint.replaceChildren();
     mountPoint.replaceChildren(...newElementsBuffer);
-    newElementsBuffer.splice(0, newElementsBuffer.length);
-}
+};
 
 const onResize = (domNode, callback) => {
     const resizeObserver = new ResizeObserver((entries) => {
@@ -190,7 +209,7 @@ const onResize = (domNode, callback) => {
     resizeObserver.observe(domNode);
 
     return () => resizeObserver.disconnect();
-}
+};
 
 // An oldie but goodie: https://www.w3schools.com/howto/howto_js_draggable.asp
 // I changed it a bit, but it is mostly the same
@@ -198,31 +217,31 @@ const onDrag = (domNode, { onDragStart, onDrag, onDragEnd }) => {
     let startX, startY, deltaX, deltaY;
 
     domNode.addEventListener("mousedown", dragMouseDown);
-  
+
     function dragMouseDown(e) {
-      e = e || window.event;
-      e.preventDefault();
+        e = e || window.event;
+        e.preventDefault();
 
-      startX = e.pageX;
-      startY = e.pageY;
-      onDragStart && onDragStart(startX, startY);
+        startX = e.pageX;
+        startY = e.pageY;
+        onDragStart && onDragStart(startX, startY);
 
-      document.addEventListener("mouseup", closeDragElement);
-      document.addEventListener("mousemove", elementDrag);
+        document.addEventListener("mouseup", closeDragElement);
+        document.addEventListener("mousemove", elementDrag);
     }
-  
+
     function elementDrag(e) {
-      e = e || window.event;
-      e.preventDefault();
+        e = e || window.event;
+        e.preventDefault();
 
-      deltaX = e.pageX - startX;
-      deltaY = e.pageY - startY;
-      onDrag && onDrag(deltaX,  deltaY);
+        deltaX = e.pageX - startX;
+        deltaY = e.pageY - startY;
+        onDrag && onDrag(deltaX, deltaY);
     }
-  
+
     function closeDragElement() {
-      document.removeEventListener("mouseup", dragMouseDown);
-      document.removeEventListener("mousemove", elementDrag);
-      onDragEnd && onDragEnd(deltaX, deltaY);
+        document.removeEventListener("mouseup", dragMouseDown);
+        document.removeEventListener("mousemove", elementDrag);
+        onDragEnd && onDragEnd(deltaX, deltaY);
     }
-}
+};
