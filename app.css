@@ -10,10 +10,6 @@ body :focus {
     outline: none;
 }
 
-.error {
-    color: #ff0000;
-}
-
 th,
 td {
     outline: black solid 1px;

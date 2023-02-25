@@ -1,7 +1,7 @@
 
 /** An editor with line numbers and syntax highlighting */
 function CodeEditor(mountPoint) {
-    const { component, input, lineNumbers, syntaxHighlightedView } = createComponent(
+    const { root, input, lineNumbers, syntaxHighlightedView } = createComponent(
         mountPoint,
         `<div class="code-editor-root">
             <div --id="lineNumbers" class="code med line-numbers"></div>
@@ -19,7 +19,7 @@ function CodeEditor(mountPoint) {
     );
 
     const state = {
-        component: component,
+        component: root,
         onCodeChanged: () => { console.log("onCodeChanged not yet subscribed to"); },
         setCode: (text) => {
             input.value = text;

@@ -16,8 +16,15 @@ A calculator made in javascript. Initially practice for writing a parser for a p
     }
 
     graph(funcs, 0, 1);
+
+- A button to share a link to a computation. May run into a URL length limit but thats fine
+- A button next to an output to copy it to the clipboard
+
+
     ```
 - Then, set up node so that we can use modules. And then set up a minifier and maybe a transpiler. And html`` and css`` type string literals.
+
+
 
 
 ## Overarching Feature plans

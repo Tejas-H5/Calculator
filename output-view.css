@@ -1,0 +1,12 @@
+.error {
+    color: #ff0000;
+}
+
+
+.output-text-result {
+    padding-left: 5px;
+}
+
+.output-text-result > .title {
+    font-weight: bold;
+}
