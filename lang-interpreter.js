@@ -1497,14 +1497,18 @@ class ScopeStack {
     }
 }
 
-function evaluateProgram(program, text) {
-    const ctx = {
+function createProgramContext(text) {
+    return {
         variables: new ScopeStack(),
         errors: [],
         results: [],
         programResult: makeNull(),
         text: text
     };
+}
+
+function evaluateProgram(program, text) {
+    const ctx = createProgramContext(text);
 
     if (program.parseError) {
         ctx.programResult = makeErr(ctx, program.parseError);

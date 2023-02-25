@@ -6,6 +6,31 @@ const remove = (arr, obj) => {
     arr.splice(index, 1);
     return obj;
 };
+
+const replaceChildren = (mountPoint, children) => {
+    if (!mountPoint) return;
+
+    if (Array.isArray(mountPoint)) {
+        mountPoint.splice(0, mountPoint.length);
+        mountPoint.push(...children);
+    } else {
+        mountPoint.replaceChildren();
+        mountPoint.replaceChildren(...children);
+    }
+}
+
+const appendChildren = (mountPoint, children) => {
+    if (!mountPoint) return;
+    
+    if (Array.isArray(mountPoint)) {
+        mountPoint.push(...children);
+    } else {
+        for (const c of children) {
+            mountPoint.appendChild(c);
+        }
+    }
+}
+
 const assert = (trueVal, msg) => {
     if (!trueVal) {
         throw new Error(msg);
@@ -26,11 +51,7 @@ const createComponent = (mountPoint, html) => {
 
     selectedNodes["root"] = createDiv.childNodes[0];
 
-    if (mountPoint) {
-        for (const c of createDiv.childNodes) {
-            mountPoint.appendChild(c);
-        }
-    }
+    appendChildren(mountPoint, createDiv.childNodes);
 
     return selectedNodes;
 };
