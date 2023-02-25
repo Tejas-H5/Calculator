@@ -8,7 +8,7 @@ const remove = (arr, obj) => {
 }
 const assert = (trueVal, msg) => { if (!trueVal) { throw new Error(msg); } }
 
-/** @returns {Object<string, Element>} */
+/** @returns {Object<string, HTMLElement>} */
 const createComponent = (mountPoint, html) => {
     const createDiv = document.createElement("div");
     createDiv.innerHTML = html.trim();
@@ -62,7 +62,7 @@ const createEvent = () => {
 
     // if several dom nodes get unsubscribed but this event is never invoked later, then we have leaked memory
     const subscribe = (domNode, callback, ...args) => {
-        assert(domNode instanceof Element, "events must be subscribed to dom elements, so they can be automatically unsubscribed");
+        assert(domNode instanceof HTMLElement, "events must be subscribed to dom elements, so they can be automatically unsubscribed");
 
         // Avoid the case where UI elements are constantly created and destroyed, and 
         // they keep subscribing to an event that is never fired and therefore never cleaned.
@@ -225,13 +225,4 @@ const onDrag = (domNode, { onDragStart, onDrag, onDragEnd }) => {
       document.removeEventListener("mousemove", elementDrag);
       onDragEnd && onDragEnd(deltaX, deltaY);
     }
-}
-
-// Allows styles to be defined across files and closer to their components / points of concern rather than in a single css file
-const styleCollector = [];
-function appendStyles(text) {
-    styleCollector.push(text);
-}
-function getStyles() {
-    return styleCollector.join("\n");
 }

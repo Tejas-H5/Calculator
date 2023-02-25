@@ -82,7 +82,6 @@ function advanceWhileWhitespace(text, pos) {
         // TODO: figure out how we can actually store these comments and use them
         // in a meaningful way
         if (text[pos] === "/") {
-            console.log("comment")
             pos += 2;
             while (pos < text.length && text[pos] !== "\n") {
                 pos++;

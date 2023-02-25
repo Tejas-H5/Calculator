@@ -1,126 +1,49 @@
-appendStyles(`
-body {
-    font-family: 'Source Code Pro', monospace;
-}
-
-*[hidden] {
-    display: none !important;
-}
-
-.flex-row {
-    display: flex;
-    flex-direction: row;
-}
-
-.label {
-    max-width: 200px;
-}
-
-
-
-
-
-
-body :focus {
-    outline: none;
-}
-
-textarea {
-    border: none;
-    overflow: hidden;
-    outline: none;
-
-    margin: 0px;
-
-    -webkit-box-shadow: none;
-    -moz-box-shadow: none;
-    box-shadow: none;
-
-    resize: none; /*remove the resize handle on the bottom right*/
-}
-
-
-.error {
-    color: #ff0000;
-}
-
-th,
-td {
-    outline: black solid 1px;
-}
-
-#testcases button {
-    margin: 5px;
-    display: block;
-}
-
-pre {
-    margin: 0px;
-}
-
-.text-output {
-    padding: 5px; 
-}
-
-.p-5 { padding: 5px; }
-.m-0 { margin: 0; }
-
-.indent-1 { margin-left: 4rem; }
-.indent-2 { margin-left: 8rem; }
-.indent-3 { margin-left: 12rem; }
-
-.graph-rect {
-    cursor: crosshair;
-}
-`)
-
-
 function App(mountPoint) {
-    const styles = getStyles();
-
     const { app, orientationPoint } = createComponent(
         mountPoint,
-        `<style>
-            ${styles}
-        </style>
-        <div class="app" --id="app">
-            <div --id="orientationPoint" style="display: flex; flex-direction: column;"></div>
+        `<div class="app" --id="app">
+            <div --id="orientationPoint" style="display: flex; flex-direction: row;"></div>
         </div>`
     );
 
-    const codeEditor = CodeEditor(orientationPoint);
-    const { renderOutputs: renderCalculationResult } = CalculationRenderer(orientationPoint);
-    const { orientationBtn } = createComponent(
-        app, 
-        `<div>
-            <button --id="orientationBtn">Orientation</button>
-        </div>`
-    );
-    const testingHarness = TestingHarness(app);
-
-
-    codeEditor.onCodeChanged = (text, ast) => {
-        // astDebug.innerText = JSON.stringify(ast, null, 4);
-        const result = evaluateProgram(ast, text);
-        renderCalculationResult(result);
-    }
-
-    testingHarness.onTestcaseSelect = (testCase) => {
-        window.scrollTo(0, 0);
-        codeEditor.setCode(testCase.input.trim())
-    }
-
-    orientationBtn.addEventListener("click", () => {
-        if (orientationPoint.style.flexDirection === "row") {
-            orientationPoint.style.flexDirection = "column"
-        } else {
-            orientationPoint.style.flexDirection = "row";
+    const codeEditor = CodeEditor(orientationPoint); {
+        codeEditor.component.style.width = "50%";
+        codeEditor.onCodeChanged = (text, ast) => {
+            // astDebug.innerText = JSON.stringify(ast, null, 4);
+            const result = evaluateProgram(ast, text);
+            calculationRenderer.renderOutputs(result);
         }
-    });
+    }
+
+    const calculationRenderer = CalculationRenderer(orientationPoint); {
+        calculationRenderer.component.style.width = "50%";
+    }
+
+    const testingHarness = TestingHarness(app); {
+        testingHarness.onTestcaseSelect = (testCase) => {
+            window.scrollTo(0, 0);
+            codeEditor.setCode(testCase.input.trim())
+        }
+    }
 
     testingHarness.renderTests(testcases, false);
-    codeEditor.setCode(`// type your code here. Or click on some examples below \n1 + 1`)
+
+    codeEditor.setCode(`// type your code here.\n// Or click on some examples below \n1 + 1`)
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 function CalculationRenderer(mountPoint) {
@@ -275,6 +198,7 @@ function CalculationRenderer(mountPoint) {
                 }
 
                 for(let i = 0; i < n; i++) {
+               
                     min = points[i + fIndex*n] < min ? points[i + fIndex*n] : min;
                     max = points[i + fIndex*n] > max ? points[i + fIndex*n] : max;
                 }
@@ -357,6 +281,9 @@ function CalculationRenderer(mountPoint) {
     }
 
 
-    return { renderOutputs };
+    return { 
+        component : stdout,
+        renderOutputs 
+    };
 }
 

@@ -1,0 +1,37 @@
+body {
+    font-family: 'Source Code Pro', monospace;
+}
+
+.label {
+    max-width: 200px;
+}
+
+body :focus {
+    outline: none;
+}
+
+.error {
+    color: #ff0000;
+}
+
+th,
+td {
+    outline: black solid 1px;
+}
+
+#testcases button {
+    margin: 5px;
+    display: block;
+}
+
+pre {
+    margin: 0px;
+}
+
+.text-output {
+    padding: 5px; 
+}
+
+.graph-rect {
+    cursor: crosshair;
+}

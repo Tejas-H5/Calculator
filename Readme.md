@@ -4,8 +4,19 @@ A calculator made in javascript. Initially practice for writing a parser for a p
 ## Immediate next steps
 
 - UI that is code on one side, results on the other, vertically. And possibly a way to toggle it, if I think that is useful
-- Better error reporting. Right now, our error is "couldn't read blah". really, as we are parsing, we should keep track of which error was furthest along in the code, and then report that one instead, as that will probably be what we want to fix.
-- Start working on overarching feature plans
+    - Done, but now the graphing output isn't working. we should make it work
+
+- THen, Mainly bugfixes.
+    - Better error reporting. Right now, our error is "couldn't read blah". really, as we are parsing, we should keep track of which error was furthest along in the code, and then report that one instead, as that will probably be what we want to fix.
+    - Get this to work properly:
+    ```
+    funcs := <>
+    for i := 0; i < 10; i+=1 {
+        funcs += (f(x) := 2 * x)
+    }
+
+    graph(funcs, 0, 1);
+    ```
 
 ## Overarching Feature plans
 

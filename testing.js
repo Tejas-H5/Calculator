@@ -1,24 +1,3 @@
-appendStyles(`
-.testcase-button:hover {
-    background: rgba(0,0,0,0.3);
-    cursor: pointer;
-}
-
-.failing {
-    background: rgba(255,0,0,0.5);
-}
-
-.passing {
-    background: rgba(0,255,0,0.5);
-}
-
-.example-code {
-    white-space:pre-wrap;
-}
-
-`)
-
-
 function TestingHarness(mountPoint) {
     const { testTable } = createComponent(
         mountPoint,

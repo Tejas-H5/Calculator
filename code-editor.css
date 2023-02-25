@@ -1,0 +1,83 @@
+.code {
+    white-space: pre;
+    tab-size: 4;
+    line-height: 1.4rem;
+}
+
+.line-numbers {
+    color: #aaaaaa;
+    background-color: #000000;
+    outline: none;
+    border-right: 1px solid #aaaaaa;
+    padding: 5px;
+    min-height: 60px;
+}
+
+.code-editing {
+    font-family: 'Source Code Pro', monospace;
+    color: #ffffff;
+    white-space: pre;
+    min-height: 60px;
+    tab-size: 4;
+    line-height: 1.4rem;
+    z-index: 1;
+    color: transparent;
+    background-color: transparent;
+    caret-color: white;
+}
+
+textarea.code-editing {
+    border: none;
+    overflow: hidden;
+    outline: none;
+
+    margin: 0px;
+
+    -webkit-box-shadow: none;
+    -moz-box-shadow: none;
+    box-shadow: none;
+
+    resize: none; /*remove the resize handle on the bottom right*/
+}
+
+
+/* Someone else's very clever approach to syntax highlighting that I copied:
+     https://css-tricks.com/creating-an-editable-textarea-that-supports-syntax-highlighted-code/ */
+.code-highlighting,
+.code-editing {
+    min-width: calc( 100% - 20px ); /* That 20 px is the left and right padding. TODO: find a better way  */
+    height: calc( 100% - 5px );
+    padding: 0;
+    padding-left: 10px;
+    padding-top: 5px;
+    border: 0;
+    white-space: pre;
+}
+
+.code-highlighting {
+    z-index: 0;
+    padding-right: 10px;
+    background-color: #000000;
+    color: #FFFFFF;
+    display: inline-block;
+}
+
+.code-editor-root {
+    display: flex; flex-direction: row;
+}
+
+.text-area-container > textarea {
+    all:unset;
+    width: 100%; height: 100%;
+}
+
+.code-editor-scroll-container {
+    flex: 1 1 0;
+}
+
+.code-editor-scroll-inner {
+    position:relative; 
+    height:100%;
+    min-width:100%;
+    display:inline-block;
+}
