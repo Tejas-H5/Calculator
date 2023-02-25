@@ -17,6 +17,8 @@ A calculator made in javascript. Initially practice for writing a parser for a p
 
     graph(funcs, 0, 1);
     ```
+- Then, set up node so that we can use modules. And then set up a minifier and maybe a transpiler. And html`` and css`` type string literals.
+
 
 ## Overarching Feature plans
 
