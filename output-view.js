@@ -130,8 +130,7 @@ function evaluateFunction(func, domainStart, domainEnd, subdivisions, evalFn) {
         programCtx.variables.popStackFrame();
 
         if (num.vt === VT_ERROR) {
-            OutputTextResult(mountPoint, { title: "An error occurred while graphing", val: num }, 0);
-            return;
+            return num;
         }
 
         const domainY = num.val;
@@ -204,7 +203,7 @@ function OutputGraphResult(mountPoint, programCtx, result, i) {
 
             const func = result.functions[fIndex];
             const subdivisions = Math.floor(pathRendererOutput.width);
-            evaluateFunction(
+            const res = evaluateFunction(
                 func, 
                 domainStart + domainOffset, 
                 domainEnd + domainOffset,
@@ -213,6 +212,10 @@ function OutputGraphResult(mountPoint, programCtx, result, i) {
                     results.push(x, y);
                 }
             );
+
+            if (res && res.vt === VT_ERROR) {
+                console.error(res);
+            }
         }
         
         pathRendererOutput.renderPaths(functionEvaluationResultPaths, {

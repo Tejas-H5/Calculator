@@ -34,16 +34,26 @@ function renderTests(state, mountPoint, testcases, onlyShowInteresting) {
         tests
             .map((testcase, i) => {
                 let output = "",
-                    isPassing = false;
+                    isPassing = true;
+
+                let expected = "";
 
                 try {
                     const text = testcase.input;
                     const ast = parseProgram(text);
                     const results = evaluateProgram(ast, text);
                     output = valueToString(results.programResult);
-                    isPassing = testcase.expected.replace(/\s/g, "") === output.replace(/\s/g, "");
+
+                    if (typeof testcase.expected === "string") {
+                        expected = testcase.expected;
+                        isPassing = testcase.expected.replace(/\s/g, "") === output.replace(/\s/g, "");
+                    } else {
+                        testcase.expected(results);
+                    }
                 } catch (e) {
                     output = "Exception";
+                    console.log(e);
+                    expected = e.message || "";
                     isPassing = false;
                 }
 
@@ -82,7 +92,7 @@ function renderTests(state, mountPoint, testcases, onlyShowInteresting) {
                                 </p>
                                 <h4>Expected:</h4>
                                 <p>
-                                    ${sanitizeHTML(testcase.expected)}
+                                    ${sanitizeHTML(expected)}
                                 </p>
                             `
                         }
@@ -117,11 +127,26 @@ function truncate(t, len) {
     return t;
 }
 
-
-
 // ---- add testcases,
 
+// TODO: convert tests into the new function way rather than a string comparison
 const testcases = [
+    {
+        name: "Captures test",
+        input: `
+i := 0
+f(x) := {
+    i += x
+    i
+}
+
+f(4)
+`,
+        expected: (res) => {
+            assert(res.programResult.vt === VT_NUMBER, "Wanted a number");
+            assert(res.programResult.val === 4, "wanted 4");
+        }
+    },
     {
         name: "Error printing test",
         input: `
@@ -131,8 +156,9 @@ for i := 0; i < 10; i+=1 {
     print(123123 + "a") // should error
 }
 `,
-        expected: "{}",
-        isVisualTest: true
+        expected: (res) => {
+            assert(res.errors.length === 10, "wanted 10 errors from that number + string operation there");
+        },
     },
     {
         name: "Plotting test",
@@ -442,7 +468,18 @@ x = y * x + x`,
     {
         name: "tensor func",
         input: "T(10, 10)",
-        expected:
-            "	shape: 10x10, data: [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]"
+        expected: (ctx) => {
+            assert(ctx.errors.length === 0, "Want no errors");
+            const res = ctx.programResult;
+            assert(
+                res.shape[0] === 10 && res.shape[1] === 10,
+                `wrong shape. We wanted 10x10 but got [${res.shape}] instead`
+            );
+
+            assert(res.data.length === 100, "wanted 100 items");
+            for (let i = 0; i < 100; i++) {
+                assert(res.data[i] === 0, "wanted all zeroes");
+            }
+        }
     }
 ];

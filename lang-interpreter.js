@@ -15,7 +15,7 @@ const RT_PRINT = "print";
 const RT_GRAPH = "graph";
 const RT_PLOT = "plot";
 
-function makeErr(ctx, info, astNode) {
+function makeErr(ctx, info) {
     const err = {
         vt: VT_ERROR,
         val: info,
@@ -85,7 +85,22 @@ function hasVariable(ctx, name) {
     return false;
 }
 
-function getVariable(ctx, name, shouldReturnError = true) {
+function getReference(ctx, name) {
+    if (typeof name !== "string") {
+        throw new Error("You aren't calling getReference right");
+    }
+
+    // I dont think we need to do other checks here?
+
+    v = ctx.variables.getRef(ctx, name);
+    if (v) {
+        return v;
+    }
+
+    return null;
+}
+
+function getVariable(ctx, name) {
     if (typeof name !== "string") {
         throw new Error("You aren't calling getVariable right");
     }
@@ -94,25 +109,31 @@ function getVariable(ctx, name, shouldReturnError = true) {
     if (v) {
         return v;
     }
+
+    v = builtinFunctionsMap[name];
+    if (v) {
+        return v;
+    }
+
     v = ctx.variables.get(ctx, name);
     if (v) {
         return v;
     }
 
-    if (shouldReturnError) {
-        return makeErr(
-            ctx,
-            `the variable ${name} hasn't been declared yet.
-You can do something like ${name} := 2; to declare it.`
-        );
-    }
-
     return null;
 }
 
-function evaluateVariable(ctx, x, err = true) {
+function evaluateVariable(ctx, x) {
     const name = x.text;
-    return getVariable(ctx, name, err);
+    const variable = getVariable(ctx, name);
+    if (variable === null) {
+        return makeErr(
+            ctx,
+            `the variable ${name} hasn't been declared yet. You can do something like ${name} := 2; to declare it.`
+        );
+    }
+
+    return variable;
 }
 
 function copyTensor(a) {
@@ -741,17 +762,17 @@ function evaluateFunctionCall(ctx, x) {
     return func.fn(ctx, ...argsEvaluated);
 }
 
-function evaluateFunctionAssignment(ctx, x, varName) {
+function evaluateFunctionAssignment(ctx, x) {
     const fn = x.lhs;
-    varName = fn.name.text;
+    const functionName = fn.name.text;
     let argNames = Array(fn.args.length);
     for (let i = 0; i < fn.args.length; i++) {
         if (fn.args[i].t !== T_IDENT) {
             return makeErr(
-                `declaration of function ${varName} accepts an invalid variable: '${nodeText(
+                `declaration of function ${functionName} accepts an invalid variable: '${nodeText(
                     ctx,
                     fn.args[i]
-                )}' (hint: just use a simpler name, like 'x' or something)`
+                )}' (hint: variable names have no spaces or punctuation, and don't start with numbers)`
             );
         }
 
@@ -779,6 +800,11 @@ function evaluateFunctionAssignment(ctx, x, varName) {
     // array of pairs like [[name, val], ...]
     const captures = [];
 
+    // not accurate, but I can't easily simulate the stack accurately at the moment.
+    // The point of this is so we don't attempt to capture variables that aren't actually captures.
+    // The next time I design a language, I will hyper-focus on closures, as they are apparently very hard
+    // to get right without planning
+    const virtualScopeStack = new Set();
     const dfs = (node) => {
         if (typeof node === "string" || node === null || node === undefined) {
             return;
@@ -789,36 +815,59 @@ function evaluateFunctionAssignment(ctx, x, varName) {
 
         if (node.t === T_IDENT) {
             const varName = node.text;
+
+            // This identifier is probably referring to one of this function's arguments.
             if (argNames.includes(varName)) return;
 
-            if (!captures.find((x) => x[0] === varName)) {
-                const valRef = ctx.variables.getRef(ctx, varName);
-                if (valRef === null) {
-                    return makeErr(ctx, `couldn't find captured variable ${varName}`);;
-                }
+            // we have already captured this variable
+            if (captures.find((x) => x[0] === varName)) return;
 
-                // // push a copy
-                // if (val.vt === VT_TENSOR) {
-                //     captures.push([varName, copyTensor(val)]);
-                // } else if (val.vt === VT_NUMBER) {
-                //     captures.push([varName, makeNumber(val.val)]);
-                // } else {
-                // push a reference (!!!)
-                captures.push([varName, valRef]);
-                //}
+            // its a builtin constant
+            if (varName in builtInConstantsMap) return;
+
+            // its a builtin function
+            if (varName in builtinFunctionsMap) return;
+
+            // its a thing we declared within this function itself.
+            if (virtualScopeStack.has(varName)) return;
+
+            const capturedVarRef = getReference(ctx, varName);
+            if (capturedVarRef === null) {
+                // return makeErr(ctx, `Could not find captured variable '${varName}' for function ${functionName}`)
+                return;
             }
+
+            // this is a reference and not a copy !!!
+            captures.push([varName, capturedVarRef])
+
             return;
         }
 
+        let isAssignNode = node.t === T_ASSIGNMENT &&
+            node.assignType === ASSIGN_DECLARE &&
+            node.lhs.t === T_IDENT;
+        let assignVarName = isAssignNode ? node.lhs.text : "";
+        if (isAssignNode) {
+            virtualScopeStack.add(assignVarName);
+        }
+
         for (const k of Object.keys(node)) {
-            if (node.t === T_ASSIGNMENT && k === "lhs" && node.assignType === ASSIGN_DECLARE) {
-                // skip all variable assignments. we don't want to treat y in f(x) { y := 2 } as a capture
+            if (node.t === T_ASSIGNMENT && 
+                k === "lhs" && 
+                node.assignType === ASSIGN_DECLARE) {
+                // variable assignment left-hand-sides should be ignored.
                 continue;
             }
 
             dfs(node[k]);
         }
+
+        if (isAssignNode) {
+            virtualScopeStack.delete(assignVarName);
+        }
     };
+
+    console.log("Captures", captures);
 
     dfs(x.rhs);
 
@@ -829,10 +878,10 @@ function evaluateFunctionAssignment(ctx, x, varName) {
         randomNumber: Math.random(),
         body: body,
         text: nodeText(ctx, x),
-        name: varName
+        name: functionName
     };
 
-    ctx.variables.set(ctx, varName, func, x.assignType);
+    ctx.variables.set(ctx, functionName, func, x.assignType);
 
     return func;
 }
@@ -871,7 +920,7 @@ function evaluateAssignment(ctx, x) {
     if (rhs.vt === VT_ERROR) {
         return rhs;
     }
-    const existingVar = getVariable(ctx, varName, false);
+    const existingVar = getVariable(ctx, varName);
 
     if (isIndexation) {
         if (x.assignType === ASSIGN_DECLARE) {
@@ -1473,6 +1522,8 @@ class ScopeStack {
             return null;
         }
 
+        // We are assigning to an existing variable.
+
         const existingRef = this.getRef(ctx, key);
         if (assignType === ASSIGN_INCREMENT) {
             value = applyOperator(ctx, existingRef.currentValue, value, { text: "+" });
@@ -1516,13 +1567,13 @@ function evaluateProgram(program, text) {
         return ctx;
     }
 
-    try {
-        for (let i = 0; i < program.expressions.length; i++) {
-            ctx.programResult = evaluateExpression(ctx, program.expressions[i]);
-            if (ctx.programResult === VT_ERROR) {
-                break;
-            }
+    for (let i = 0; i < program.expressions.length; i++) {
+        ctx.programResult = evaluateExpression(ctx, program.expressions[i]);
+        if (ctx.programResult === VT_ERROR) {
+            break;
         }
+    }
+    try {
     } catch (err) {
         ctx.programResult = makeErr(ctx, `A Javascript error occurred while evaluating your program: ${err}`);
     }
