@@ -1,24 +1,3 @@
-appendStyles(`
-.testcase-button:hover {
-    background: rgba(0,0,0,0.3);
-    cursor: pointer;
-}
-
-.failing {
-    background: rgba(255,0,0,0.5);
-}
-
-.passing {
-    background: rgba(0,255,0,0.5);
-}
-
-.example-code {
-    white-space:pre-wrap;
-}
-
-`)
-
-
 function TestingHarness(mountPoint) {
     const { testTable } = createComponent(
         mountPoint,
@@ -144,6 +123,30 @@ function truncate(t, len) {
 
 const testcases = [
     {
+        name: "Plotting test",
+        input: `
+// Draw some line segments:
+line := [
+    [1, 1],
+    [1, -1],
+    [-1, -1],
+    [-1, 1],
+    [1, 1],
+]
+
+line2 := [
+    [0.5, -0.5],
+    [-0.5, -0.5],
+    [0, 0.5],
+    [0.5, -0.5],
+]
+
+plot(line, line2)
+`,
+        expected: "{}",
+        isVisualTest: true
+    },
+    {
         name: "basic math",
         input: `
 // was failing for the longest time and I didnt even notice lol
@@ -165,15 +168,15 @@ g(x) := {
     // it thinks that sum is already declared
 	sum := 0;
 	for i := 0; i < len(funcs); i+= 1 {
-		f := funcs[2];
+		f := funcs[i];
 		sum += f(x);
 	}
 
 	sum
 }
 
-// this must work
-graph(g, 0, 1)
+// this should display multiple functions at once. right now, it doesn't
+graph(funcs, 0, 1)
 `,
         expected: "{}",
         isVisualTest: true

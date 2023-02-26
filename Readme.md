@@ -3,9 +3,33 @@ A calculator made in javascript. Initially practice for writing a parser for a p
 
 ## Immediate next steps
 
-- UI that is code on one side, results on the other, vertically. And possibly a way to toggle it, if I think that is useful
-- Better error reporting. Right now, our error is "couldn't read blah". really, as we are parsing, we should keep track of which error was furthest along in the code, and then report that one instead, as that will probably be what we want to fix.
-- Start working on overarching feature plans
+- Finish graphing algorithm.
+    - Graphing algorithm - add popping out an output to fullscreen view
+    
+- Theme. 
+    - convert everything to dark theme
+    - Methods and function calls should have different syntax highlighting
+
+- THen, Mainly bugfixes.
+    - Better error reporting. Right now, our error is "couldn't read blah". really, as we are parsing, we should keep track of which error was furthest along in the code, and then report that one instead, as that will probably be what we want to fix.
+    - Get this to work properly:
+    ```
+    funcs := <>
+    for i := 0; i < 10; i+=1 {
+        funcs += (f(x) := 2 * x)
+    }
+
+    graph(funcs, 0, 1);
+
+- A button to share a link to a computation. May run into a URL length limit but thats fine
+- A button next to an output to copy it to the clipboard
+
+
+    ```
+- Then, set up node so that we can use modules. And then set up a minifier and maybe a transpiler. And html`` and css`` type string literals.
+
+
+
 
 ## Overarching Feature plans
 

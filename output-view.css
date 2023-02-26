@@ -1,0 +1,28 @@
+.error {
+    color: #ff0000;
+}
+
+
+.output-text-result,
+.output-graph-result {
+    padding-left: 5px;
+}
+
+.output-text-result > .title {
+    font-weight: bold;
+}
+
+.output-graph-result canvas {
+    position: absolute;
+    cursor: move;
+}
+
+.output-graph-result .output-graph-result-canvas-container {
+    margin-right: 10px;
+    margin-top: 10px;
+    aspect-ratio: 5 / 3;
+}
+
+.output-graph-result > .title {
+    font-weight: bold;
+}

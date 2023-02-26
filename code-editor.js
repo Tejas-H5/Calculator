@@ -1,83 +1,25 @@
-appendStyles(`
-.code {
-    white-space: pre-wrap;
-    tab-size: 4;
-    line-height: 1.4rem;
-}
 
-.code div:before {
-    content: "|";
-    width: 20px;
-}
-
-.med {
-    font-size: 1.2rem;
-}
-
-.line-numbers {
-    color: #aaaaaa;
-    background: #000000;
-    outline: none;
-    border-right: 1px solid #aaaaaa;
-    padding: 5px;
-    min-height: 60px;
-}
-
-.input {
-    padding-left: 5px;
-    font-family: 'Source Code Pro', monospace;
-    background: #000000;
-    color: #ffffff;
-    white-space: pre;
-    min-height: 60px;
-    tab-size: 4;
-    line-height: 1.4rem;
-}
-
-.input.editing {
-    z-index: 1;
-    color: transparent;
-    background: transparent;
-    caret-color: white;
-}
-
-/* Someone else's very clever approach to syntax highlighting that I copied:
-     https://css-tricks.com/creating-an-editable-textarea-that-supports-syntax-highlighted-code/ */
-.input.editing,
-.input.highlighting {
-    top: 0; left: 0;
-
-    /* That 20 px is the left and right padding. TODO: find a better way  */
-
-    min-width: calc( 100% - 20px );
-    height: calc( 100% - 5px );
-    padding: 0;
-    padding-left: 10px;
-    padding-top: 5px;
-    border: 0;
-}
-
-.input.highlighting {
-    z-index: 0;
-    padding-right: 10px;
-}
-`)
-
-
-/** This text editor also performs syntax highlighting */
+/** An editor with line numbers and syntax highlighting */
 function CodeEditor(mountPoint) {
-    const { input, lineNumbers, syntaxHighlightedView } = createComponent(
+    const { root, input, lineNumbers, syntaxHighlightedView } = createComponent(
         mountPoint,
-        `<div style="display: flex; flex-direction: row">
+        `<div class="code-editor-root">
             <div --id="lineNumbers" class="code med line-numbers"></div>
-            <div style="flex: 1; position:relative;">
-                <div class="input highlighting code med" --id="syntaxHighlightedView"></div>
-                <textarea --id="input" class="input editing code med" spellcheck="false" style="position: absolute;"></textarea>
-            </div>
+            <div style="flex: 1; overflow-x: scroll;">
+                <div class="code-editor-scroll-inner">
+                    <div class="code code-highlighting" --id="syntaxHighlightedView" style="font-size:1.2em"></div>
+                    <div class="fill code code-editing" style="white-space: unset">
+                        <div class="text-area-container fill-wh">
+                            <textarea --id="input" spellcheck="false" autocomplete="false" style="white-space: pre; font-size:1.2em;"></textarea>
+                        </div>
+                    </div>
+                </div>        
+            </div>        
         </div>`
     );
 
     const state = {
+        component: root,
         onCodeChanged: () => { console.log("onCodeChanged not yet subscribed to"); },
         setCode: (text) => {
             input.value = text;

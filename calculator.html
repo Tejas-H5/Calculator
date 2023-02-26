@@ -5,19 +5,30 @@
         <meta http-equiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Calculator</title>
-    </head>
-    <body style="margin: 0px;">
-        <div id="app"></div>
-        <!-- Cant be made async just yet :( -->
+
+        <link rel="stylesheet" href="util.css">
+
         <script src="./helpers.js"></script>
         <script src="./framework.js"></script>
         <script src="./lang-parser.js"></script>
         <script src="./lang-interpreter.js"></script>
+
         <script src="./code-editor.js"></script>
+        <link rel="stylesheet" href="code-editor.css">
+
+        <script src="./output-view.js"></script>
+        <link rel="stylesheet" href="output-view.css">
+
         <script src="./testing.js"></script>
+        <link rel="stylesheet" href="testing.css">
+
         <script src="./app.js"></script>
-        <script >
-            App(document.getElementById("app"));
+        <link rel="stylesheet" href="app.css">
+    </head>
+    <body style="margin: 0px;">
+        <div id="app"></div>
+        <script>
+            App(document.getElementById("app"))
         </script>
     </body>
 </html>
