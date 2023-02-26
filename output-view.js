@@ -1,6 +1,7 @@
 function OutputView(mountPoint, ctx) {
     const {
         root: component,
+        inputPoint,
         outputPoint,
         shareBtn
     } = createComponent(
@@ -10,21 +11,69 @@ function OutputView(mountPoint, ctx) {
             <div style="display: flex; flex-direction: row-reverse; padding-right:20px;">
                 <!-- <button --id="shareBtn">share link</button> -->
             </div>
+            <div --id="inputPoint"></div>
             <div --id="outputPoint"></div>
         </div>`
     );
 
     // shareBtn.addEventListener("click", () => alert("feature not yet implemented"));
 
-    return {
+    const state = {
+        inputsMap: new Map(),
         component: component,
         renderOutputs: (programCtx) => {
-            renderOutputs(outputPoint, programCtx);
-        }
+            renderInputs(state, inputPoint, programCtx);
+            renderOutputs(state, outputPoint, programCtx);
+        },
+        // hooks
+        onInputValueChange: (name, val) => {}
     };
+
+    return state;
 }
 
-function renderOutputs(mountPoint, programCtx) {
+function renderInputs(state, mountPoint, programCtx) {
+    // All program inputs should be at the top
+    console.log(programCtx.inputs);
+
+    for (const [inputName, inputDataRef] of state.inputsMap.entries()) {
+        inputDataRef.shouldDelete = true;
+    }
+
+    const newInputsList = [];
+    for (const [inputName, inputData] of programCtx.inputs.entries()) {
+        if (!state.inputsMap.has(inputName)) {
+            // create input if it dont already exist
+            const inputUI = CreateInput(newInputsList, inputName, inputData);
+            state.inputsMap.set(inputName, {
+                ui: inputUI,
+                data: inputData,
+                shouldDelete: false,
+            });
+
+            inputUI.onInputValueChange = () => {
+                state.onInputValueChange();
+            };
+        }
+
+        // make sure the input's state is in sync with the list config data
+        const inputDataRef = state.inputsMap.get(inputName);
+        inputDataRef.ui.updateState(inputData);
+        newInputsList.push(inputDataRef.ui.root)
+        // make sure we dont delete this one from the map
+        inputDataRef.shouldDelete = false;
+    }
+
+    for (const [inputName, inputDataRef] of state.inputsMap.entries()) {
+        if (inputDataRef.shouldDelete) {
+            state.inputsMap.delete(inputName);
+        }
+    }
+
+    replaceChildren(mountPoint, newInputsList);
+}
+
+function renderOutputs(state, mountPoint, programCtx) {
     const outputs = [];
 
     if (programCtx.errors.length > 0) {
@@ -34,7 +83,7 @@ function renderOutputs(mountPoint, programCtx) {
         // ensure that errors caused by the same code are collapsed into a single
         // error message to save output space
         const errorSpots = new Map();
-        
+
         for (let i = 0; i < errors.length; i++) {
             const err = errors[i];
             const ast = err.astNode;
@@ -56,13 +105,12 @@ function renderOutputs(mountPoint, programCtx) {
             const lineNumber = ast.lineNumber;
             const errorsPlural = errors.length === 1 ? "Error" : `${errors.length} errors`;
             const title = `${errorsPlural} at ln ${lineNumber} ( ${truncate(astText, 30)} )`;
-            OutputTextResult(outputs, { 
+            OutputTextResult(outputs, {
                 title: title,
                 val: errors[0]
             });
         }
     }
-
 
     // process and show all results, like Titled statements, graphs, etc.
     // we do it like this, so that we can still run unit tests without running side-effects
@@ -81,14 +129,12 @@ function renderOutputs(mountPoint, programCtx) {
         }
     }
 
-    
     if (programCtx.programResult.vt !== VT_NULL) {
         OutputTextResult(outputs, {
             title: "Final calculation result",
             val: programCtx.programResult
         });
     }
-
 
     replaceChildren(mountPoint, outputs);
 }
@@ -147,27 +193,29 @@ function evaluateFunction(func, domainStart, domainEnd, subdivisions, evalFn) {
     programCtx.variables.popStackFrame();
 }
 
-
 function OutputPlotResult(mountPoint, programCtx, result, i) {
     if (result.val && result.val.vt === VT_ERROR) {
         OutputTextResult(mountPoint, result, i);
         return;
     }
 
-    const pathRendererOutput = PathOutputResult(mountPoint)
+    const pathRendererOutput = PathOutputResult(mountPoint);
 
     pathRendererOutput.setTitle("Plot output " + i + ":");
 
     function rerenderPlot() {
-        pathRendererOutput.renderPaths(result.lists.map(rl => rl.data), {
-            maintainAspectRatio: true
-        });
+        pathRendererOutput.renderPaths(
+            result.lists.map((rl) => rl.data),
+            {
+                maintainAspectRatio: true
+            }
+        );
     }
 
     let domainStartX, domainStartY;
     const screenDeltaToDomainDelta = (x) => {
         return (x / pathRendererOutput.width) * (pathRendererOutput.maxX - pathRendererOutput.minX);
-    }
+    };
     onDrag(pathRendererOutput.canvasRoot, {
         onDragStart() {
             domainStartX = pathRendererOutput.domainOffsetX;
@@ -178,11 +226,10 @@ function OutputPlotResult(mountPoint, programCtx, result, i) {
             pathRendererOutput.domainOffsetY = domainStartY - screenDeltaToDomainDelta(dY);
             rerenderPlot();
         }
-    })
+    });
 
     pathRendererOutput.onForcedRerender = rerenderPlot;
-}   
-
+}
 
 function OutputGraphResult(mountPoint, programCtx, result, i) {
     if (result.val && result.val.vt === VT_ERROR) {
@@ -190,16 +237,14 @@ function OutputGraphResult(mountPoint, programCtx, result, i) {
         return;
     }
 
-    const pathRendererOutput = PathOutputResult(mountPoint)
+    const pathRendererOutput = PathOutputResult(mountPoint);
 
     const domainStart = result.start.val;
     const domainEnd = result.end.val;
     let domainOffset = 0;
 
-    pathRendererOutput.setTitle(
-        "graph of " + result.functions.map(f => f.name).join(", ")
-    );
-    
+    pathRendererOutput.setTitle("graph of " + result.functions.map((f) => f.name).join(", "));
+
     function rerenderGraph() {
         // evaluate the functions along the domains.
         // can reduce re-allocations by moving this out of the local fn ??
@@ -211,10 +256,10 @@ function OutputGraphResult(mountPoint, programCtx, result, i) {
             const func = result.functions[fIndex];
             const subdivisions = Math.floor(pathRendererOutput.width);
             const res = evaluateFunction(
-                func, 
-                domainStart + domainOffset, 
+                func,
+                domainStart + domainOffset,
                 domainEnd + domainOffset,
-                subdivisions, 
+                subdivisions,
                 (x, y) => {
                     results.push(x, y);
                 }
@@ -224,7 +269,7 @@ function OutputGraphResult(mountPoint, programCtx, result, i) {
                 console.error(res);
             }
         }
-        
+
         pathRendererOutput.renderPaths(functionEvaluationResultPaths, {
             maintainAspectRatio: false
         });
@@ -243,7 +288,7 @@ function OutputGraphResult(mountPoint, programCtx, result, i) {
             domainOffset = domainStartX - screenDeltaToDomainDeltaX(dx);
             rerenderGraph();
         }
-    })
+    });
 }
 
 function PathOutputResult(mountPoint) {
@@ -270,9 +315,7 @@ function PathOutputResult(mountPoint) {
         maxY: 0,
         domainOffsetX: 0,
         domainOffsetY: 0,
-        renderPaths(paths, {
-            maintainAspectRatio
-        }) {
+        renderPaths(paths, { maintainAspectRatio }) {
             renderPaths2D(this, paths, canvasRootCtx, {
                 maintainAspectRatio: maintainAspectRatio
             });
@@ -287,7 +330,7 @@ function PathOutputResult(mountPoint) {
         },
         domainYToScreenY: (y) => {
             return (1 - (y - state.minY + state.domainOffsetY) / (state.maxY - state.minY)) * state.height;
-        },
+        }
     };
 
     onResize(canvasRoot.parentElement, (newWidth, newHeight) => {
@@ -302,16 +345,12 @@ function PathOutputResult(mountPoint) {
     return state;
 }
 
-
-
 /** @param {CanvasRenderingContext2D} canvasRootCtx */
-function renderPaths2D(state, pointLists, canvasRootCtx, {
-    maintainAspectRatio
-}) {
+function renderPaths2D(state, pointLists, canvasRootCtx, { maintainAspectRatio }) {
     // Find graph extends
     for (let i = 0; i < pointLists.length; i++) {
         const path = pointLists[i];
-        for (let j = 0; j < path.length; j+=2) {
+        for (let j = 0; j < path.length; j += 2) {
             const x = path[j + 0];
             const y = path[j + 1];
 
@@ -330,7 +369,7 @@ function renderPaths2D(state, pointLists, canvasRootCtx, {
     }
 
     if (maintainAspectRatio) {
-        // domain X-Y bound aspect ratio needs to match the screen aspect ratio. 
+        // domain X-Y bound aspect ratio needs to match the screen aspect ratio.
         // we would rather increase the bounds than decrease them.
 
         const xLen = state.maxX - state.minX;
@@ -362,16 +401,18 @@ function renderPaths2D(state, pointLists, canvasRootCtx, {
         domainXToScreenX,
         domainYToScreenY,
         width: canvasWidth,
-        height: canvasHeight,
+        height: canvasHeight
     } = state;
 
     // extend bounds by a tiny percent so the graph lines don't get cut off
     {
         const extendX = (maxX - minX) * 0.01;
-        minX -= extendX; maxX += extendX;
+        minX -= extendX;
+        maxX += extendX;
 
         const extendY = (maxY - minY) * 0.01;
-        minY -= extendY; maxY += extendY;
+        minY -= extendY;
+        maxY += extendY;
     }
 
     // start rendering the graph.
@@ -391,7 +432,7 @@ function renderPaths2D(state, pointLists, canvasRootCtx, {
         canvasRootCtx.lineWidth = 2;
         canvasRootCtx.beginPath();
 
-        for (let j = 0; j < path.length; j+=2) {
+        for (let j = 0; j < path.length; j += 2) {
             const resultX = path[j + 0];
             const resultY = path[j + 1];
 
@@ -463,4 +504,64 @@ function renderPaths2D(state, pointLists, canvasRootCtx, {
             }
         }
     }
+}
+
+function CreateInput(mountPoint, inputName, inputData) {
+    const state = {
+        onInputValueChange: () => {},
+        updateState: (inputData) => {},
+        root: null
+    };
+
+    if (inputData.it === IT_SLIDER) {
+        createSlider(state, mountPoint, inputName, inputData);
+    } else {
+        console.error("unknown input type: " + inputData.it);
+        return;
+    }
+
+    return state;
+}
+
+function createSlider(state, mountPoint, inputName, inputData) {
+    const { root, nameRoot, input } = createComponent(
+        mountPoint,
+        `<div class="result-input flex-row">
+            <div --id="nameRoot" class="title"></div>
+            <div class="flex-1">
+                <input --id="input" type="range" style="width: 100%;"></input>
+            </div>
+        </div>`
+    );
+
+    nameRoot.textContent = inputName;
+
+    const updateState = (inputData, setValue) => {
+        state.minValue = inputData.minValue || 0;
+        state.maxValue = inputData.maxValue || 1;
+        state.stepValue = inputData.stepValue || 0.001;
+    
+        // HTML range inputs only have integer values
+        const intMin = state.minValue / state.stepValue;
+        const intMax = state.maxValue / state.stepValue;
+    
+        input.setAttribute("min", intMin);
+        input.setAttribute("max", intMax);
+
+        if (setValue) {
+            input.setAttribute("value", inputData.currentValue.val / state.stepValue);
+        }
+    }
+
+    updateState(inputData, true)
+    state.updateState = (inputData) => {
+        updateState(inputData, false)
+    }
+
+    input.oninput = () => {
+        inputData.currentValue.val = input.value * state.stepValue;
+        state.onInputValueChange();
+    };
+
+    state.root = root;
 }

@@ -182,6 +182,7 @@ const renderKeyedList = (
     keyNodeMap,
     keyFn,
     renderFn,
+    updateFn, 
     ...args
 ) => {
     for (const data of keyNodeMap.values()) {
@@ -202,6 +203,8 @@ const renderKeyedList = (
 
         const data = keyNodeMap.get(key);
         data.shouldDelete = false;
+
+        updateFn(data.el, obj);
         newElementsBuffer.push(data.el);
     }
 

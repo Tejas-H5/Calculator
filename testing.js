@@ -132,6 +132,47 @@ function truncate(t, len) {
 // TODO: convert tests into the new function way rather than a string comparison
 const testcases = [
     {
+        name: "Slider test",
+        input:`
+const := slider("x", 2, 0, 10, 0.0001);
+
+graph(f(x) := x^const, 0, 1)
+`,
+        expected: `{}`,
+        isVisualTest: true
+    },
+    {
+        name: "Test matrix mult 2",
+        input: `
+// Draw some line segments:
+line := ~[
+    [1, 1],
+    [1, 1],
+	[1, 1],
+	[1, 1],
+]
+
+// zero the x coordinates
+A := [[1, 0],
+	  [0, 0]]
+
+print(A)
+print(~A)
+print(line)
+~(A ** line)
+`,
+        expected: (res) => {
+            const mat = res.programResult;
+            assert(mat.vt === VT_TENSOR, "Expected a tensor");
+            assert(mat.shape[0] === 2 && mat.shape[1] === 4, "Wanted a 2x4");
+
+            for (let i = 0; i < mat.data.length; i += 2) {
+                assert(mat.data[i] === 1, "wanted x coords to be 1");
+                assert(mat.data[i + 1] === 0, "wanted y coords to be 0");
+            }
+        }
+    },
+    {
         name: "Captures test",
         input: `
 i := 0
@@ -158,7 +199,7 @@ for i := 0; i < 10; i+=1 {
 `,
         expected: (res) => {
             assert(res.errors.length === 10, "wanted 10 errors from that number + string operation there");
-        },
+        }
     },
     {
         name: "Plotting test",
@@ -479,37 +520,6 @@ x = y * x + x`,
             assert(res.data.length === 100, "wanted 100 items");
             for (let i = 0; i < 100; i++) {
                 assert(res.data[i] === 0, "wanted all zeroes");
-            }
-        }
-    },
-    {
-        name: "Test matrix mult 2",
-        input: `
-// Draw some line segments:
-line := ~[
-    [1, 1],
-    [1, 1],
-	[1, 1],
-	[1, 1],
-]
-
-// zero the x coordinates
-A := [[1, 0],
-	  [0, 0]]
-
-print(A)
-print(~A)
-print(line)
-~(A ** line)
-`,
-        expected: (res) => {
-            const mat = res.programResult;
-            assert(mat.vt === VT_TENSOR, "Expected a tensor");
-            assert(mat.shape[0] === 2 && mat.shape[1] === 4, "Wanted a 2x4");
-
-            for(let i = 0; i < mat.data.length ; i+=2) {
-                assert(mat.data[i] === 1, "wanted x coords to be 1");
-                assert(mat.data[i + 1] === 0, "wanted y coords to be 0");
             }
         }
     }

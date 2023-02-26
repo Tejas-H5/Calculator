@@ -26,3 +26,7 @@
 .output-graph-result > .title {
     font-weight: bold;
 }
+
+.result-input > .title {
+    font-weight: bold;
+}

@@ -2,6 +2,7 @@
 // ---- evaluating the AST
 // This is before the parsing code, because the parser depends on some of the structures and stuff defined here.
 
+// VT => Value Type
 const VT_ANY = debug ? "VT_ANY" : 0; // used only for type-based whatever, not a real value
 const VT_NUMBER = debug ? "VT_NUMBER" : 0;
 const VT_TENSOR = debug ? "VT_TENSOR" : 1;
@@ -11,9 +12,13 @@ const VT_FUNCTION = debug ? "VT_FUNCTION" : 4;
 const VT_STRING = debug ? "VT_STRING" : 5;
 const VT_LIST = debug ? "VT_LIST" : 6;
 
-const RT_PRINT = "print";
-const RT_GRAPH = "graph";
-const RT_PLOT = "plot";
+// RT => Result Type
+const RT_PRINT = debug ? "print" : 0;
+const RT_GRAPH = debug ? "graph" : 1;
+const RT_PLOT = debug ? "plot" : 2;
+
+// IT => Input Type
+const IT_SLIDER = debug ? "slider" : 0;
 
 function makeErr(ctx, info) {
     const err = {
@@ -390,6 +395,8 @@ function getVals(args) {
 
 // imagine building an interpreted language in an interpreted language
 
+// TODO: specify the required argument types to these functions properly
+
 // these args are nowhere near enough to capture the way arguments are specified into these functions.
 // Some of these builtin math functions take two floats, I was just not bothered to update the args arrays.
 // Some of the methods also take variadic arguments.
@@ -672,6 +679,38 @@ const builtinFunctionsMap = {
                 lists: args
             });
             return makeNull();
+        }
+    },
+    // Need some functions that can generate UI that bind to variables in the program.
+    // TODO: make sure that sliders are only a top level thing. They shouldn't be done in loops. 
+    slider: {
+        args: [],
+        fn: (ctx, name, initialValue, minValue, maxValue, step) => {
+            // enforce that it's a constant string.
+            // this also means that we can't add sliders within loops.
+            if (name.vt !== VT_STRING) {
+                return makeErr(`The first argument for a slider must be it's name. e.g: x := slider("cool value", 0, 1, 0.1);`)
+            }
+            const inputName = name.val;
+
+            if (ctx.inputs.has(inputName)) {
+                return ctx.inputs.get(inputName).getValue();
+            }
+
+            const newSliderInput = {
+                it: IT_SLIDER,
+                name: inputName,
+                currentValue: makeNumber(initialValue.val),
+                minValue: minValue && minValue.val,
+                maxValue: maxValue && maxValue.val,
+                stepValue: step && step.val,
+                getValue() {
+                    return this.currentValue;
+                }
+            }
+            ctx.inputs.set(inputName, newSliderInput);
+
+            return newSliderInput.currentValue;
         }
     }
 };
@@ -1552,19 +1591,22 @@ class ScopeStack {
     }
 }
 
-function createProgramContext(text) {
+function createProgramContext(text, existingInputs) {
     return {
         currentAstNode: null,
         variables: new ScopeStack(),
         errors: [],
         results: [],
         programResult: makeNull(),
-        text: text
+        text: text,
+        inputs: existingInputs || new Map()
     };
 }
 
-function evaluateProgram(program, text) {
-    const ctx = createProgramContext(text);
+function evaluateProgram(program, text, {
+    existingInputs = null
+} = {}) {
+    const ctx = createProgramContext(text, existingInputs);
 
     if (program.parseError) {
         ctx.programResult = makeErr(ctx, program.parseError);
