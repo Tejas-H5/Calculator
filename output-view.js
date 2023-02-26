@@ -28,8 +28,43 @@ function renderOutputs(mountPoint, programCtx) {
     const outputs = [];
 
     if (programCtx.programResult.vt !== VT_NULL) {
-        OutputTextResult(outputs, { title: "Final calculation result", val: programCtx.programResult });
+        OutputTextResult(outputs, {
+            title: "Final calculation result",
+            val: programCtx.programResult
+        });
     }
+
+    if (programCtx.errors.length > 0) {
+        // Display all errors that we encountered
+        const errors = programCtx.errors;
+
+        // ensure that errors caused by the same code are collapsed into a single
+        // error message to save output space
+        const errorSpots = new Map();
+        
+        for (let i = 0; i < errors.length; i++) {
+            const err = errors[i];
+            const ast = err.astNode;
+            if (!errorSpots.has(ast)) {
+                errorSpots.set(ast, []);
+            }
+
+            const errorList = errorSpots.get(ast);
+            errorList.push(err);
+        }
+
+        for (const [ast, errors] of errorSpots.entries()) {
+            const astText = programCtx.text.substring(ast.start, ast.end);
+            const lineNumber = ast.lineNumber;
+            const errorsPlural = errors.length === 1 ? "Error" : `${errors.length} errors`;
+            const title = `${errorsPlural} at ln ${lineNumber} ( ${truncate(astText, 30)} )`;
+            OutputTextResult(outputs, { 
+                title: title,
+                val: errors[0]
+            });
+        }
+    }
+
 
     // process and show all results, like Titled statements, graphs, etc.
     // we do it like this, so that we can still run unit tests without running side-effects

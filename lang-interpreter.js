@@ -15,13 +15,14 @@ const RT_PRINT = "print";
 const RT_GRAPH = "graph";
 const RT_PLOT = "plot";
 
-function makeErr(ctx, info) {
+function makeErr(ctx, info, astNode) {
     const err = {
         vt: VT_ERROR,
-        val: info
+        val: info,
+        astNode: ctx.currentNode
     };
 
-    ctx.errors[0] = err;
+    ctx.errors.push(err);
 
     return err;
 }
@@ -792,8 +793,8 @@ function evaluateFunctionAssignment(ctx, x, varName) {
 
             if (!captures.find((x) => x[0] === varName)) {
                 const valRef = ctx.variables.getRef(ctx, varName);
-                if (valRef.vt === VT_ERROR) {
-                    return valRef;
+                if (valRef === null) {
+                    return makeErr(ctx, `couldn't find captured variable ${varName}`);;
                 }
 
                 // // push a copy
@@ -1350,6 +1351,7 @@ function evaluateExpression(ctx, x) {
 
     const type = x.t;
     let value;
+    ctx.currentNode = x;
 
     switch (type) {
         case T_NUMBER:
@@ -1443,7 +1445,7 @@ class ScopeStack {
             }
         }
 
-        return makeErr(ctx, `couldn't find variable ${key}`);
+        return null;
     }
     get(ctx, key) {
         const ref = this.getRef(ctx, key);
@@ -1497,6 +1499,7 @@ class ScopeStack {
 
 function createProgramContext(text) {
     return {
+        currentAstNode: null,
         variables: new ScopeStack(),
         errors: [],
         results: [],
@@ -1513,13 +1516,13 @@ function evaluateProgram(program, text) {
         return ctx;
     }
 
-    for (let i = 0; i < program.expressions.length; i++) {
-        ctx.programResult = evaluateExpression(ctx, program.expressions[i]);
-        if (ctx.programResult === VT_ERROR) {
-            break;
-        }
-    }
     try {
+        for (let i = 0; i < program.expressions.length; i++) {
+            ctx.programResult = evaluateExpression(ctx, program.expressions[i]);
+            if (ctx.programResult === VT_ERROR) {
+                break;
+            }
+        }
     } catch (err) {
         ctx.programResult = makeErr(ctx, `A Javascript error occurred while evaluating your program: ${err}`);
     }

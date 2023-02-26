@@ -3,14 +3,7 @@ A calculator made in javascript. Initially practice for writing a parser for a p
 
 ## Immediate next steps
 
-- Finish graphing algorithm.
-    - Graphing algorithm - add popping out an output to fullscreen view
-    
-- Theme. 
-    - convert everything to dark theme
-    - Methods and function calls should have different syntax highlighting
-
-- THen, Mainly bugfixes.
+- Mainly bugfixes.
     - Better error reporting. Right now, our error is "couldn't read blah". really, as we are parsing, we should keep track of which error was furthest along in the code, and then report that one instead, as that will probably be what we want to fix.
     - Get this to work properly:
     ```
@@ -20,6 +13,12 @@ A calculator made in javascript. Initially practice for writing a parser for a p
     }
 
     graph(funcs, 0, 1);
+
+- Graphing algorithm - add popping out an output to fullscreen view. Later
+
+- Theme. 
+    - convert everything to dark theme
+    - Methods and function calls should have different syntax highlighting
 
 - A button to share a link to a computation. May run into a URL length limit but thats fine
 - A button next to an output to copy it to the clipboard

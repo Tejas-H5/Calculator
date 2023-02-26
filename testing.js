@@ -123,6 +123,18 @@ function truncate(t, len) {
 
 const testcases = [
     {
+        name: "Error printing test",
+        input: `
+print(1 + 1)
+
+for i := 0; i < 10; i+=1 {
+    print(123123 + "a") // should error
+}
+`,
+        expected: "{}",
+        isVisualTest: true
+    },
+    {
         name: "Plotting test",
         input: `
 // Draw some line segments:
