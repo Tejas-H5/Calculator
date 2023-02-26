@@ -21,6 +21,7 @@ But also consider moving whatever it is you are working on to a real programming
     - Better error reporting. Right now, our error is "couldn't read blah". really, as we are parsing, we should keep track of which error was furthest along in the code, and then report that one instead, as that will probably be what we want to fix.
     This has happened, but have been unable to reproduce it. Will come back to this later
 
+- NEED a new function slider(name, value) so that I can have a slider to slide and see the outputs change.
 
 - Graphing algorithm - add popping out an output to fullscreen view. Later
 
