@@ -1,18 +1,26 @@
 # A general-purpose programming-based calculator (try it [here](https://el-tejaso.github.io/Calculator/calculator.html))
-A calculator made in javascript. Initially practice for writing a parser for a programming language, it now has several tangential features, and I want to see how far I can push it till either JavaScript is too slow, or the code of my vanilla-js minimalist no-tech stack becomes unmaintainable (some may look at the codebase now and think it already is, but I would disagree).
+
+I often find that when I am programming something and need to test a calculation, or if I need a calculator for any other reason, I will often reach for the search-bar in a new tab in the browser, because a single text-field where I can type my equation is a much better interface than what is provided on most calculator apps.
+
+The problem is that this is actually quite bad. It doesn't work when you don't have access to the internet, and I can't do any more complicated calculations.
+It also isn't enough for most visualizations, which I end up reaching for something like the Desmos graphing calculator anyway. 
+That solution also isn't the best, because there are a lot of programming constructs that simply don't exist there. 
+It may also be worth using a calculator that has all of the floating-point quirks that I would normally encounter when I am programming a game or whatever.
+
+For this and other reasons, I have decided to spend some time working on this calculator. Even though it is really a programming language, I don't call it that, because it isn't for writing programs. It is for doing prototyping simple algorithms or even a small part of a larger algorithm I am working on, and seeing INSTANT feedback - exactly what I may have been using a calculator for earlier.
+If you find you are writing a large program to the point where the web interface is lagging, please raise a github issue. 
+But also consider moving whatever it is you are working on to a real programming language.
 
 ## Immediate next steps
 
 - Mainly bugfixes.
-    - Better error reporting. Right now, our error is "couldn't read blah". really, as we are parsing, we should keep track of which error was furthest along in the code, and then report that one instead, as that will probably be what we want to fix.
-    - Get this to work properly:
-    ```
-    funcs := <>
-    for i := 0; i < 10; i+=1 {
-        funcs += (f(x) := 2 * x)
-    }
+    - Matrix multiplication is broken.
+        - Not obvious that ** will be matrix multiplication
+        - Also it is literally not working atm
 
-    graph(funcs, 0, 1);
+    - Better error reporting. Right now, our error is "couldn't read blah". really, as we are parsing, we should keep track of which error was furthest along in the code, and then report that one instead, as that will probably be what we want to fix.
+    This has happened, but have been unable to reproduce it. Will come back to this later
+
 
 - Graphing algorithm - add popping out an output to fullscreen view. Later
 

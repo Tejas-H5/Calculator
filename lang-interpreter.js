@@ -155,9 +155,15 @@ function getMatrixStride(ctx, a, b) {
     }
 }
 
-function performElementwiseOp(ctx, a, b, op) {
+function performElementwiseOp(ctx, a, b, op, specialName) {
     const stride = getMatrixStride(ctx, a, b);
-    if (stride.vt === VT_ERROR) return stride;
+    if (stride.vt === VT_ERROR) {
+        // TODO: ultra-hack. find a better place to put this
+        if (specialName === "mult") {
+            stride.val += " (This is an element-wise mult. Maybe you wanted a normal matrix multiplication? we use ** for that here)";
+        }
+        return stride;
+    }
 
     const newTensor = copyTensor(a);
 
@@ -241,7 +247,7 @@ const binOpMatrix = {
                 performElementwiseOp(ctx, a, b, (a, b) => (Math.abs(a - b) > 0.0000000001 ? 1.0 : 0.0)),
             "+": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a + b),
             "-": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a - b),
-            "*": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a * b),
+            "*": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a * b, "mult"),
             "/": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a / b),
             "%": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => a % b),
             "^": (ctx, a, b) => performElementwiseOp(ctx, a, b, (a, b) => Math.pow(a, b))
@@ -866,8 +872,6 @@ function evaluateFunctionAssignment(ctx, x) {
             virtualScopeStack.delete(assignVarName);
         }
     };
-
-    console.log("Captures", captures);
 
     dfs(x.rhs);
 

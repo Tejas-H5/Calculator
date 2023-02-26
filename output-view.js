@@ -27,13 +27,6 @@ function OutputView(mountPoint, ctx) {
 function renderOutputs(mountPoint, programCtx) {
     const outputs = [];
 
-    if (programCtx.programResult.vt !== VT_NULL) {
-        OutputTextResult(outputs, {
-            title: "Final calculation result",
-            val: programCtx.programResult
-        });
-    }
-
     if (programCtx.errors.length > 0) {
         // Display all errors that we encountered
         const errors = programCtx.errors;
@@ -45,6 +38,11 @@ function renderOutputs(mountPoint, programCtx) {
         for (let i = 0; i < errors.length; i++) {
             const err = errors[i];
             const ast = err.astNode;
+            if (!ast) {
+                // can't localize this to a particular node.
+                continue;
+            }
+
             if (!errorSpots.has(ast)) {
                 errorSpots.set(ast, []);
             }
@@ -82,6 +80,15 @@ function renderOutputs(mountPoint, programCtx) {
             }
         }
     }
+
+    
+    if (programCtx.programResult.vt !== VT_NULL) {
+        OutputTextResult(outputs, {
+            title: "Final calculation result",
+            val: programCtx.programResult
+        });
+    }
+
 
     replaceChildren(mountPoint, outputs);
 }

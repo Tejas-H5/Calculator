@@ -52,7 +52,7 @@ function renderTests(state, mountPoint, testcases, onlyShowInteresting) {
                     }
                 } catch (e) {
                     output = "Exception";
-                    console.log(e);
+                    console.error(e);
                     expected = e.message || "";
                     isPassing = false;
                 }
@@ -479,6 +479,37 @@ x = y * x + x`,
             assert(res.data.length === 100, "wanted 100 items");
             for (let i = 0; i < 100; i++) {
                 assert(res.data[i] === 0, "wanted all zeroes");
+            }
+        }
+    },
+    {
+        name: "Test matrix mult 2",
+        input: `
+// Draw some line segments:
+line := ~[
+    [1, 1],
+    [1, 1],
+	[1, 1],
+	[1, 1],
+]
+
+// zero the x coordinates
+A := [[1, 0],
+	  [0, 0]]
+
+print(A)
+print(~A)
+print(line)
+~(A ** line)
+`,
+        expected: (res) => {
+            const mat = res.programResult;
+            assert(mat.vt === VT_TENSOR, "Expected a tensor");
+            assert(mat.shape[0] === 2 && mat.shape[1] === 4, "Wanted a 2x4");
+
+            for(let i = 0; i < mat.data.length ; i+=2) {
+                assert(mat.data[i] === 1, "wanted x coords to be 1");
+                assert(mat.data[i + 1] === 0, "wanted y coords to be 0");
             }
         }
     }
