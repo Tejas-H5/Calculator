@@ -134,9 +134,17 @@ const testcases = [
     {
         name: "Slider test",
         input:`
-const := slider("x", 2, 0, 10, 0.0001);
+theta := slider("angle", 0, 0, 2*PI, PI/36);
 
-graph(f(x) := x^const, 0, 1)
+theta
+
+plot([
+    [sin(theta), cos(theta)],
+    [sin(theta + PI/2), cos(theta + PI/2)],
+    [sin(theta + PI), cos(theta + PI)],
+    [sin(theta + 3*PI/2), cos(theta + 3*PI/2) ],
+    [sin(theta), cos(theta)],
+])
 `,
         expected: `{}`,
         isVisualTest: true
