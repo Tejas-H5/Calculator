@@ -156,26 +156,32 @@ plot(line, line2)
     {
         name: "scope capturing",
         input: `
-                funcs := <>;
+funcs := <>;
 for i := 0; i < 3; i+=1 {
-	f(x) := sin(i*x)
-	funcs += f;
+    // need to reference a scope-local var for this 
+    // to work
+    j := i + 1
+    f(x) := sin(j*x)
+    funcs += f;
 }
 
 g(x) := {
     // sometimes this sum variable can be mis-interpreted as a capture, in which case this won't work.
     // or we forget to push and pop a stack frame each time we evaluate this function in the graphing method, and
     // it thinks that sum is already declared
-	sum := 0;
-	for i := 0; i < len(funcs); i+= 1 {
-		f := funcs[i];
-		sum += f(x);
-	}
+    sum := 0;
+    for i := 0; i < len(funcs); i+= 1 {
+        f := funcs[i];
+        sum += f(x);
+    }
 
-	sum
+    sum
 }
 
-// this should display multiple functions at once. right now, it doesn't
+// this should work. sometimes it doesn't
+graph(g, 0, 1)
+
+// this should graph multiple functions
 graph(funcs, 0, 1)
 `,
         expected: "{}",
