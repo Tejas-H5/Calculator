@@ -39,11 +39,11 @@ function renderOutputs(mountPoint, programCtx) {
             if (result.rt === RT_PRINT) {
                 OutputTextResult(outputs, result, i);
             } else if (result.rt === RT_PLOT) {
-                OutputTextResult("Plotting has not been implemented yet");
+                OutputPlotResult(outputs, programCtx, result, i);
             } else if (result.rt === RT_GRAPH) {
                 OutputGraphResult(outputs, programCtx, result, i);
             } else {
-                p("unknown result type " + result.rt);
+                console.error("no such result type " + result.rt);
             }
         }
     }
@@ -106,71 +106,91 @@ function evaluateFunction(func, domainStart, domainEnd, subdivisions, evalFn) {
     programCtx.variables.popStackFrame();
 }
 
+
+function OutputPlotResult(mountPoint, programCtx, result, i) {
+    if (result.val && result.val.vt === VT_ERROR) {
+        OutputTextResult(mountPoint, result, i);
+        return;
+    }
+
+    const pathRendererOutput = PathOutputResult(mountPoint)
+
+    pathRendererOutput.setTitle("Plot output " + i + ":");
+
+    function rerenderPlot() {
+        pathRendererOutput.renderPaths(result.lists.map(rl => rl.data), {
+            maintainAspectRatio: true
+        });
+    }
+
+    let domainStartX, domainStartY;
+    const screenDeltaToDomainDelta = (x) => {
+        return (x / pathRendererOutput.width) * (pathRendererOutput.maxX - pathRendererOutput.minX);
+    }
+    onDrag(pathRendererOutput.canvasRoot, {
+        onDragStart() {
+            domainStartX = pathRendererOutput.domainOffsetX;
+            domainStartY = pathRendererOutput.domainOffsetY;
+        },
+        onDrag(dX, dY) {
+            pathRendererOutput.domainOffsetX = domainStartX - screenDeltaToDomainDelta(dX);
+            pathRendererOutput.domainOffsetY = domainStartY - screenDeltaToDomainDelta(dY);
+            rerenderPlot();
+        }
+    })
+
+    pathRendererOutput.onForcedRerender = rerenderPlot;
+}   
+
+
 function OutputGraphResult(mountPoint, programCtx, result, i) {
     if (result.val && result.val.vt === VT_ERROR) {
         OutputTextResult(mountPoint, result, i);
         return;
     }
 
-    const { root, canvasRoot, titleRoot } = createComponent(
-        mountPoint,
-        `<div class="output-graph-result">
-            <div class="title" --id="titleRoot"></div>
-            <div class="output-graph-result-canvas-container">
-                <canvas --id="canvasRoot"></canvas>
-            </div>
-        </div>`
-    );
+    const pathRendererOutput = PathOutputResult(mountPoint)
 
     const domainStart = result.start.val;
     const domainEnd = result.end.val;
     let domainOffset = 0;
 
-    const graphTitle = "graph of " + result.functions.map(f => f.name).join(", ");
-    titleRoot.textContent = graphTitle;
-
-    /** @type { CanvasRenderingContext2D } */
-    const canvasRootCtx = canvasRoot.getContext("2d");
-    canvasRootCtx.translate(0.5, 0.5); // allows 1-width lines to actually be 1 pixel wide
-
-    let width, height;
+    pathRendererOutput.setTitle(
+        "graph of " + result.functions.map(f => f.name).join(", ")
+    );
+    
     function rerenderGraph() {
         // evaluate the functions along the domains.
-        // can reduce re-allocations by moving this out of the local fn
-        const allResults = [];
+        // can reduce re-allocations by moving this out of the local fn ??
+        const functionEvaluationResultPaths = [];
         for (let fIndex = 0; fIndex < result.functions.length; fIndex++) {
             const results = [];
-            allResults.push(results);
+            functionEvaluationResultPaths.push(results);
 
             const func = result.functions[fIndex];
-            const subdivisions = Math.floor(width);
+            const subdivisions = Math.floor(pathRendererOutput.width);
             evaluateFunction(
                 func, 
                 domainStart + domainOffset, 
                 domainEnd + domainOffset,
                 subdivisions, 
                 (x, y) => {
-                    results.push([x, y]);
+                    results.push(x, y);
                 }
             );
         }
-
-        renderPaths(allResults, canvasRootCtx, width, height);
+        
+        pathRendererOutput.renderPaths(functionEvaluationResultPaths, {
+            maintainAspectRatio: false
+        });
     }
 
-    onResize(canvasRoot.parentElement, (newWidth, newHeight) => {
-        width = newWidth;
-        height = newHeight;
-        canvasRoot.width = width;
-        canvasRoot.height = height;
-        rerenderGraph();
-    });
+    pathRendererOutput.onForcedRerender = rerenderGraph;
 
-
-    const screenDeltaToDomainDeltaX = (x) => (x / width) * (domainEnd - domainStart);
+    const screenDeltaToDomainDeltaX = (x) => (x / pathRendererOutput.width) * (domainEnd - domainStart);
 
     let domainStartX;
-    onDrag(canvasRoot, {
+    onDrag(pathRendererOutput.canvasRoot, {
         onDragStart() {
             domainStartX = domainOffset;
         },
@@ -181,31 +201,124 @@ function OutputGraphResult(mountPoint, programCtx, result, i) {
     })
 }
 
+function PathOutputResult(mountPoint) {
+    const { root, canvasRoot, titleRoot } = createComponent(
+        mountPoint,
+        `<div class="output-graph-result">
+            <div class="title" --id="titleRoot"></div>
+            <div class="output-graph-result-canvas-container">
+                <canvas --id="canvasRoot"></canvas>
+            </div>
+        </div>`
+    );
+
+    /** @type { CanvasRenderingContext2D } */
+    const canvasRootCtx = canvasRoot.getContext("2d");
+    canvasRootCtx.translate(0.5, 0.5); // allows 1-width lines to actually be 1 pixel wide
+    const state = {
+        // calculated after a render
+        width: 0,
+        height: 0,
+        minX: 0,
+        minY: 0,
+        maxX: 0,
+        maxY: 0,
+        domainOffsetX: 0,
+        domainOffsetY: 0,
+        renderPaths(paths, {
+            maintainAspectRatio
+        }) {
+            renderPaths2D(this, paths, canvasRootCtx, {
+                maintainAspectRatio: maintainAspectRatio
+            });
+        },
+        setTitle: (title) => {
+            titleRoot.textContent = title;
+        },
+        canvasRoot: canvasRoot,
+        onForcedRerender: () => {},
+        domainXToScreenX: (x) => {
+            return ((x - (state.minX + state.domainOffsetX)) / (state.maxX - state.minX)) * state.width;
+        },
+        domainYToScreenY: (y) => {
+            return (1 - (y - state.minY + state.domainOffsetY) / (state.maxY - state.minY)) * state.height;
+        },
+    };
+
+    onResize(canvasRoot.parentElement, (newWidth, newHeight) => {
+        state.width = newWidth;
+        state.height = newHeight;
+        canvasRoot.width = state.width;
+        canvasRoot.height = state.height;
+
+        state.onForcedRerender();
+    });
+
+    return state;
+}
+
+
+
 /** @param {CanvasRenderingContext2D} canvasRootCtx */
-function renderPaths(pointLists, canvasRootCtx, canvasWidth, canvasHeight) {
+function renderPaths2D(state, pointLists, canvasRootCtx, {
+    maintainAspectRatio
+}) {
     // Find graph extends
-    let minX = null,
-        minY = null,
-        maxX = null,
-        maxY = null;
     for (let i = 0; i < pointLists.length; i++) {
         const path = pointLists[i];
-        for (let j = 0; j < path.length; j++) {
-            const [x, y] = path[j];
+        for (let j = 0; j < path.length; j+=2) {
+            const x = path[j + 0];
+            const y = path[j + 1];
 
             if (i === 0 && j === 0) {
-                minX = x;
-                maxX = x;
-                minY = y;
-                maxY = y;
+                state.minX = x;
+                state.maxX = x;
+                state.minY = y;
+                state.maxY = y;
             }
 
-            minX = x < minX ? x : minX;
-            minY = y < minY ? y : minY;
-            maxX = x > maxX ? x : maxX;
-            maxY = y > maxY ? y : maxY;
+            state.minX = x < state.minX ? x : state.minX;
+            state.minY = y < state.minY ? y : state.minY;
+            state.maxX = x > state.maxX ? x : state.maxX;
+            state.maxY = y > state.maxY ? y : state.maxY;
         }
     }
+
+    if (maintainAspectRatio) {
+        // domain X-Y bound aspect ratio needs to match the screen aspect ratio. 
+        // we would rather increase the bounds than decrease them.
+
+        const xLen = state.maxX - state.minX;
+        const yLen = state.maxY - state.minY;
+
+        const targetAspectRatio = state.width / state.height;
+        if (xLen / yLen > targetAspectRatio) {
+            // increase Y bounds
+            const midpointY = state.minY + (state.maxY - state.minY) / 2;
+            const wantedYLen = xLen / targetAspectRatio;
+
+            state.minY = midpointY - wantedYLen / 2;
+            state.maxY = midpointY + wantedYLen / 2;
+        } else {
+            // increase X bounds
+            const midpointX = state.minX + (state.maxX - state.minX) / 2;
+            const wantedXLen = targetAspectRatio * yLen;
+
+            state.minX = midpointX - wantedXLen / 2;
+            state.maxX = midpointX + wantedXLen / 2;
+        }
+    }
+
+    let {
+        minX,
+        minY,
+        maxX,
+        maxY,
+        domainXToScreenX,
+        domainYToScreenY,
+        width: canvasWidth,
+        height: canvasHeight,
+    } = state;
 
     // extend bounds by a tiny percent so the graph lines don't get cut off
     {
@@ -215,9 +328,6 @@ function renderPaths(pointLists, canvasRootCtx, canvasWidth, canvasHeight) {
         const extendY = (maxY - minY) * 0.01;
         minY -= extendY; maxY += extendY;
     }
-
-    const domainXToScreenX = (x) => ((x - minX) / (maxX - minX)) * canvasWidth;
-    const domainYToScreenY = (y) => (1 - (y - minY) / (maxY - minY)) * canvasHeight;
 
     // start rendering the graph.
 
@@ -236,8 +346,9 @@ function renderPaths(pointLists, canvasRootCtx, canvasWidth, canvasHeight) {
         canvasRootCtx.lineWidth = 2;
         canvasRootCtx.beginPath();
 
-        for (let j = 0; j < path.length; j++) {
-            const [resultX, resultY] = path[j];
+        for (let j = 0; j < path.length; j+=2) {
+            const resultX = path[j + 0];
+            const resultY = path[j + 1];
 
             const x = domainXToScreenX(resultX);
             const y = domainYToScreenY(resultY);

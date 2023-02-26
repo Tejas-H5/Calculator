@@ -123,6 +123,30 @@ function truncate(t, len) {
 
 const testcases = [
     {
+        name: "Plotting test",
+        input: `
+// Draw some line segments:
+line := [
+    [1, 1],
+    [1, -1],
+    [-1, -1],
+    [-1, 1],
+    [1, 1],
+]
+
+line2 := [
+    [0.5, -0.5],
+    [-0.5, -0.5],
+    [0, 0.5],
+    [0.5, -0.5],
+]
+
+plot(line, line2)
+`,
+        expected: "{}",
+        isVisualTest: true
+    },
+    {
         name: "basic math",
         input: `
 // was failing for the longest time and I didnt even notice lol

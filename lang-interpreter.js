@@ -129,7 +129,7 @@ function getMatrixStride(ctx, a, b) {
     } else if (areSameShape(a.shape.slice(remainderPart), b.shape)) {
         return a.shape.slice(remainderPart).reduce((a, b) => a * b, 1);
     } else {
-        return makeErr(ctx, "wrong sizes");
+        return makeErr(ctx, `wrong sizes: [${a.shape}], [${b.shape}]`);
     }
 }
 
@@ -630,13 +630,11 @@ const builtinFunctionsMap = {
             }
 
             for (; i < args.length; i++) {
-                if (args[i].vt !== VT_TENSOR) {
-                    return makeErr(ctx, `can only plot tensors`);
-                }
-                if (args[i].shape[args[i].shape.length - 1] !== 2) {
-                    return makeErr(ctx, `can only plot 2D vectors`);
-                }
-                if (args[i].shape.length !== 2) {
+                if (
+                    (args[i].vt !== VT_TENSOR) ||
+                    (args[i].shape[args[i].shape.length - 1] !== 2) ||
+                    (args[i].shape.length !== 2)
+                ) {
                     return makeErr(ctx, `can only plot lists of 2D vectors`);
                 }
             }
@@ -1078,7 +1076,7 @@ function evaluateIndicesToFlatArray(ctx, errorNode, shape, indexes) {
 
     // now, we have some indices that need to become a list of indexes.
     // if we have [1,2,3][1], then 1 is the index.
-    // if we have [1,2,3][[1, 2]], then we really want 2 indices - 1 and two.
+    // if we have [1,2,3][[1, 2]], then we really want 2 indices - 1 and 2.
     // [[1,2,3],[4,5,6]][1][0] -> 3 + 0
     // [[1,2,3],[4,5,6]][[0, 1]][0] -> [0 + 0, 3 + 0]
     const flatIndexes = [0];

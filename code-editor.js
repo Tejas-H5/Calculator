@@ -159,7 +159,6 @@ function highlightSyntax(mountPoint, text, ast) {
     }
 
     // if we couldn't AST the file all the way to the end, we should still be displaying all the text
-    console.log(text.substring(pos))
     advanceHighlightToPos(text.length);
 
     mountPoint.innerHTML = strings.join("");
