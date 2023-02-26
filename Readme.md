@@ -3,10 +3,12 @@ A calculator made in javascript. Initially practice for writing a parser for a p
 
 ## Immediate next steps
 
-- UI that is code on one side, results on the other, vertically. And possibly a way to toggle it, if I think that is useful
-    - Done, but now the graphing output isn't working. we should make it work
-- Printing a result should print the literal expression that was put in. No programming language can currently do this easily, but we can do it easily here
-- Methods and function calls should have different syntax highlighting
+- Finish graphing algorithm.
+    - Graphing algorithm - add popping out an output to fullscreen view
+    
+- Theme. 
+    - convert everything to dark theme
+    - Methods and function calls should have different syntax highlighting
 
 - THen, Mainly bugfixes.
     - Better error reporting. Right now, our error is "couldn't read blah". really, as we are parsing, we should keep track of which error was furthest along in the code, and then report that one instead, as that will probably be what we want to fix.

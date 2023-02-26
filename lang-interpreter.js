@@ -608,7 +608,7 @@ const builtinFunctionsMap = {
                 return makeErr(ctx, `arguments to graph are like ...functions, domainStart, domainEnd`);
             }
             if (i !== args.length - 2) {
-                return makeErr(ctx, `specify the start and end after the list of functions`);
+                return makeErr(ctx, `specify the start and end after the list of functions. eg: graph(f(x) := x, 0, 1)`);
             }
 
             ctx.results.push({

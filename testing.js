@@ -144,15 +144,15 @@ g(x) := {
     // it thinks that sum is already declared
 	sum := 0;
 	for i := 0; i < len(funcs); i+= 1 {
-		f := funcs[2];
+		f := funcs[i];
 		sum += f(x);
 	}
 
 	sum
 }
 
-// this must work
-graph(g, 0, 1)
+// this should display multiple functions at once. right now, it doesn't
+graph(funcs, 0, 1)
 `,
         expected: "{}",
         isVisualTest: true
