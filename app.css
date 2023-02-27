@@ -1,5 +1,14 @@
+:root {
+    --bg-col: #000;
+    --bg-col-2: #111;
+    --fg-col: #FFF;
+    --fg-col-2: #DDD;
+}
+
 body {
     font-family: 'Source Code Pro', monospace;
+    background-color: var(--bg-col);
+    color: var(--fg-col)
 }
 
 .label {
@@ -10,9 +19,8 @@ body :focus {
     outline: none;
 }
 
-th,
-td {
-    outline: black solid 1px;
+th, td {
+    outline: var(--fg-col-2) solid 1px;
 }
 
 #testcases button {

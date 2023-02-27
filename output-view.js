@@ -410,8 +410,16 @@ function renderPaths2D(state, pointLists, canvasRootCtx, { maintainAspectRatio }
         domainXToScreenX,
         domainYToScreenY,
         width: canvasWidth,
-        height: canvasHeight
+        height: canvasHeight,
+        canvasRoot
     } = state;
+
+
+    const cssVar = (name) => {
+        const val = getComputedStyle(canvasRoot).getPropertyValue(name);
+        console.log(val);
+        return val;
+    }
 
     // extend bounds by a tiny percent so the graph lines don't get cut off
     {
@@ -429,7 +437,7 @@ function renderPaths2D(state, pointLists, canvasRootCtx, { maintainAspectRatio }
     // graph bg
     // background
     {
-        canvasRootCtx.fillStyle = `rgb(255, 255, 255)`;
+        canvasRootCtx.fillStyle = cssVar(`--bg-col`);
         canvasRootCtx.fillRect(0, 0, canvasWidth, canvasHeight);
     }
 
@@ -460,7 +468,7 @@ function renderPaths2D(state, pointLists, canvasRootCtx, { maintainAspectRatio }
 
     // grid
     {
-        canvasRootCtx.strokeStyle = `rgb(0, 0, 0, 0.5)`;
+        canvasRootCtx.strokeStyle = cssVar("--fg-col")
         canvasRootCtx.lineWidth = 1;
 
         const getGoodGridSpacing = (width) => {
@@ -500,16 +508,16 @@ function renderPaths2D(state, pointLists, canvasRootCtx, { maintainAspectRatio }
 
             const fontSize = 14;
             canvasRootCtx.font = `${fontSize}px monospace`;
-            canvasRootCtx.fillStyle = `rgb(0,0,0)`;
+            canvasRootCtx.fillStyle = cssVar("--fg-col");
             canvasRootCtx.textAlign = "center";
 
             for (let x = startX; x < maxX; x += gridXSpacing) {
                 canvasRootCtx.fillText(round(x), domainXToScreenX(x), domainYToScreenY(minY) - fontSize + 4);
             }
 
-            canvasRootCtx.textAlign = "start";
+            canvasRootCtx.textAlign = "left";
             for (let y = startY; y < maxY; y += gridYSpacing) {
-                canvasRootCtx.fillText(round(y), domainXToScreenX(minX) + 4, domainYToScreenY(y) - 2);
+                canvasRootCtx.fillText(round(y), domainXToScreenX(minX) + 10, domainYToScreenY(y) - 2);
             }
         }
     }

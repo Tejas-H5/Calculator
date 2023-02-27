@@ -57,28 +57,30 @@ function CodeEditor(mountPoint) {
     return state;
 }
 
-function getSyntaxHighlightStyle(t) {
+function getSyntaxHighlightStyle(t, node) {
     switch (t) {
         case "comment":
-            return "color:#AAAAAA;";
+            return "hl-comment";
         case T_NUMBER:
-            return "color:#3ABEFF;";
+            return "hl-number";
         case T_STRING:
-            return "color:#FF7F00;";
+            return "hl-string";
         case T_OP_COMPARISON:
         case T_OP_EXPONENT:
         case T_OP_EXPR:
         case T_OP_TERM:
-            return "color:#FFFFFF;";
+            return "hl-op";
+        case T_FUNCTION_CALL:
+            return "hl-fn-call";
         case T_IDENT:
-            return "color:#FFE03B;font-style:italic;";
+            return "hl-ident";
         case T_FOR_LOOP:
         case T_BLOCK:
-            return "color:#FF00FF;";
+            return "hl-block";
         case T_ASSIGNMENT:
-            return "color:#00FF00";
+            return "hl-assign";
         default:
-            return "color:#FFFFFF;";
+            return "hl-default";
     }
 }
 
@@ -96,7 +98,7 @@ function highlightSyntax(mountPoint, text, ast) {
             // we wrap whitespace in the comment style. this is because comments are treated as whitespace
             pos = advanceWhileWhitespace(text, pos);
             if (startPos !== pos) {
-                strings.push(`<span style="${commentStyle}">`);
+                strings.push(`<span class="${commentStyle}">`);
                 strings.push(sanitizeHTML(text.substring(startPos, pos)));
                 strings.push("</span>");
             }
@@ -118,8 +120,8 @@ function highlightSyntax(mountPoint, text, ast) {
         advanceHighlightToPos(node.start);
 
         // then we warp the node itself in it's respective style
-        const style = getSyntaxHighlightStyle(node.t);
-        strings.push(`<span style="${style}">`);
+        const className = getSyntaxHighlightStyle(node.t, node);
+        strings.push(`<span class="${className}">`);
 
         // this should recursively push the inner node text/styles
         const keys = getKeysForAstNodeType_Ordered(node.t);
