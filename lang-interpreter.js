@@ -668,25 +668,41 @@ const builtinFunctionsMap = {
     plot: {
         args: [],
         fn: (ctx, ...args) => {
-            let lines = [];
-            let i = 0;
-            if (args[i].vt === VT_LIST) {
-                args = [...args[i].items];
-            }
+            let lists = [];
 
-            for (; i < args.length; i++) {
-                if (
-                    (args[i].vt !== VT_TENSOR) ||
-                    (args[i].shape[args[i].shape.length - 1] !== 2) ||
-                    (args[i].shape.length !== 2)
-                ) {
-                    return makeErr(ctx, `can only plot lists of 2D vectors`);
+            for (let i = 0; i < args.length; i++) {
+                if (args[i].vt === VT_TENSOR) {
+                    if ((args[i].shape.length === 2) && (args[i].shape[1] === 2)) {
+                        lists.push(args[i]);
+                        continue;
+                    }
+                } else if (args[i].vt === VT_LIST) {
+                    const data = [];
+                    for(let j = 0; j < args[i].items.length; j++) {
+                        if (args[i].items[j].shape.length === 1 &&
+                            args[i].items[j].shape[0] === 2) {
+                            data.push(args[i].items[j].data[0]);
+                            data.push(args[i].items[j].data[1]);
+                            continue;
+                        }
+
+                        return makeErr(ctx, `can only plot lists/vectors of 2D vectors`);
+                    }
+
+                    lists.push({
+                        vt: VT_TENSOR,
+                        shape: [data.length / 2, 2],
+                        data: data
+                    });
+                    continue;
                 }
+
+                return makeErr(ctx, `can only plot lists/vectors of 2D vectors`);
             }
 
             ctx.results.push({
                 rt: RT_PLOT,
-                lists: args
+                lists: lists
             });
             return makeNull();
         }
@@ -703,21 +719,22 @@ const builtinFunctionsMap = {
             }
             const inputName = name.val;
 
-            if (ctx.inputs.has(inputName)) {
-                return ctx.inputs.get(inputName).currentValue;
+            if (!ctx.inputs.has(inputName)) {
+                const newSliderInput = {
+                    it: IT_SLIDER,
+                    name: inputName,
+                    currentValue: makeNumber(initialValue.val)
+                }
+                ctx.inputs.set(inputName, newSliderInput);
             }
 
-            const newSliderInput = {
-                it: IT_SLIDER,
-                name: inputName,
-                currentValue: makeNumber(initialValue.val),
-                minValue: minValue && minValue.val,
-                maxValue: maxValue && maxValue.val,
-                stepValue: step && step.val,
-            }
-            ctx.inputs.set(inputName, newSliderInput);
+            const sliderInput = ctx.inputs.get(inputName);
 
-            return newSliderInput.currentValue;
+            sliderInput.minValue = minValue && minValue.val;
+            sliderInput.maxValue = maxValue && maxValue.val;
+            sliderInput.stepValue = step && step.val;
+
+            return sliderInput.currentValue;
         }
     }
 };

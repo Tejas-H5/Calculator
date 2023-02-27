@@ -3,6 +3,7 @@ function OutputView(mountPoint, ctx) {
         root: component,
         inputPoint,
         outputPoint,
+        errorPoint,
         shareBtn
     } = createComponent(
         mountPoint,
@@ -11,6 +12,7 @@ function OutputView(mountPoint, ctx) {
             <div style="display: flex; flex-direction: row-reverse; padding-right:20px;">
                 <!-- <button --id="shareBtn">share link</button> -->
             </div>
+            <div --id="errorPoint"></div>
             <div --id="inputPoint"></div>
             <div --id="outputPoint"></div>
         </div>`
@@ -22,6 +24,7 @@ function OutputView(mountPoint, ctx) {
         inputsMap: new Map(),
         component: component,
         renderOutputs: (programCtx) => {
+            renderErrors(state, errorPoint, programCtx);
             renderInputs(state, inputPoint, programCtx);
             renderOutputs(state, outputPoint, programCtx);
         },
@@ -30,6 +33,50 @@ function OutputView(mountPoint, ctx) {
     };
 
     return state;
+}
+
+function renderErrors(state, mountPoint, programCtx) {
+    if (programCtx.errors.length === 0) {
+        return
+    }
+
+    const outputs = [];
+
+    // Display all errors that we encountered
+    const errors = programCtx.errors;
+
+    // ensure that errors caused by the same code are collapsed into a single
+    // error message to save output space
+    const errorSpots = new Map();
+
+    for (let i = 0; i < errors.length; i++) {
+        const err = errors[i];
+        const ast = err.astNode;
+        if (!ast) {
+            // can't localize this to a particular node.
+            continue;
+        }
+
+        if (!errorSpots.has(ast)) {
+            errorSpots.set(ast, []);
+        }
+
+        const errorList = errorSpots.get(ast);
+        errorList.push(err);
+    }
+
+    for (const [ast, errors] of errorSpots.entries()) {
+        const astText = programCtx.text.substring(ast.start, ast.end);
+        const lineNumber = ast.lineNumber;
+        const errorsPlural = errors.length === 1 ? "Error" : `${errors.length} errors`;
+        const title = `${errorsPlural} at ln ${lineNumber} ( ${truncate(astText, 30)} )`;
+        OutputTextResult(outputs, {
+            title: title,
+            val: errors[0]
+        });
+    }
+
+    replaceChildren(mountPoint, outputs);
 }
 
 function renderInputs(state, mountPoint, programCtx) {
@@ -73,42 +120,6 @@ function renderInputs(state, mountPoint, programCtx) {
 
 function renderOutputs(state, mountPoint, programCtx) {
     const outputs = [];
-
-    if (programCtx.errors.length > 0) {
-        // Display all errors that we encountered
-        const errors = programCtx.errors;
-
-        // ensure that errors caused by the same code are collapsed into a single
-        // error message to save output space
-        const errorSpots = new Map();
-
-        for (let i = 0; i < errors.length; i++) {
-            const err = errors[i];
-            const ast = err.astNode;
-            if (!ast) {
-                // can't localize this to a particular node.
-                continue;
-            }
-
-            if (!errorSpots.has(ast)) {
-                errorSpots.set(ast, []);
-            }
-
-            const errorList = errorSpots.get(ast);
-            errorList.push(err);
-        }
-
-        for (const [ast, errors] of errorSpots.entries()) {
-            const astText = programCtx.text.substring(ast.start, ast.end);
-            const lineNumber = ast.lineNumber;
-            const errorsPlural = errors.length === 1 ? "Error" : `${errors.length} errors`;
-            const title = `${errorsPlural} at ln ${lineNumber} ( ${truncate(astText, 30)} )`;
-            OutputTextResult(outputs, {
-                title: title,
-                val: errors[0]
-            });
-        }
-    }
 
     // process and show all results, like Titled statements, graphs, etc.
     // we do it like this, so that we can still run unit tests without running side-effects

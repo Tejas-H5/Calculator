@@ -20,7 +20,7 @@ function CodeEditor(mountPoint) {
 
     const state = {
         component: root,
-        onCodeChanged: () => { console.log("onCodeChanged not yet subscribed to"); },
+        onCodeChanged: () => { },
         setCode: (text) => {
             input.value = text;
             

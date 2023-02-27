@@ -134,16 +134,29 @@ const testcases = [
     {
         name: "Slider test",
         input:`
-theta := slider("angle", 0, 0, 2*PI, PI/360);
+// trying to draw a clock looking thing 
+granularity := slider("granularity", 5, 5, 36, 1)
+theta := slider("angle", 0, 0, 2*PI, 2*PI/granularity);
 
-theta
+handleLength := 10;
 
-plot([
-    [sin(theta), cos(theta)],
+// draw clock outline
+points := <>
+for i := 0; i <= granularity; i+=1 {
+    angle := (i / granularity) * 2*PI;
+    points += [
+        handleLength * sin(angle), 
+        handleLength * cos(angle)
+    ]
+}
+
+// draw clock handle
+plot(points, [
+    [handleLength * sin(theta), handleLength * cos(theta)],
     [sin(theta + PI/2), cos(theta + PI/2)],
     [sin(theta + PI), cos(theta + PI)],
     [sin(theta + 3*PI/2), cos(theta + 3*PI/2) ],
-    [sin(theta), cos(theta)],
+    [handleLength * sin(theta), handleLength * cos(theta)],
 ])
 `,
         expected: `{}`,
