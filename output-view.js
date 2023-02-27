@@ -34,8 +34,6 @@ function OutputView(mountPoint, ctx) {
 
 function renderInputs(state, mountPoint, programCtx) {
     // All program inputs should be at the top
-    console.log(programCtx.inputs);
-
     for (const [inputName, inputDataRef] of state.inputsMap.entries()) {
         inputDataRef.shouldDelete = true;
     }
@@ -537,6 +535,7 @@ function createSlider(state, mountPoint, inputName, inputData) {
     nameRoot.textContent = inputName;
 
     const updateState = (inputData, setValue) => {
+        state.inputData = inputData;
         state.minValue = inputData.minValue || 0;
         state.maxValue = inputData.maxValue || 1;
         state.stepValue = inputData.stepValue || 0.001;
@@ -559,7 +558,7 @@ function createSlider(state, mountPoint, inputName, inputData) {
     }
 
     input.oninput = () => {
-        inputData.currentValue.val = input.value * state.stepValue;
+        state.inputData.currentValue.val = input.value * state.stepValue;
         state.onInputValueChange();
     };
 

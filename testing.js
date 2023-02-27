@@ -134,7 +134,7 @@ const testcases = [
     {
         name: "Slider test",
         input:`
-theta := slider("angle", 0, 0, 2*PI, PI/36);
+theta := slider("angle", 0, 0, 2*PI, PI/360);
 
 theta
 

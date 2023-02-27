@@ -696,7 +696,7 @@ const builtinFunctionsMap = {
     slider: {
         args: [],
         fn: (ctx, name, initialValue, minValue, maxValue, step) => {
-            // enforce that it's a constant string.
+            // TODO: enforce that it's a constant string.
             // this also means that we can't add sliders within loops.
             if (name.vt !== VT_STRING) {
                 return makeErr(`The first argument for a slider must be it's name. e.g: x := slider("cool value", 0, 1, 0.1);`)
@@ -704,7 +704,7 @@ const builtinFunctionsMap = {
             const inputName = name.val;
 
             if (ctx.inputs.has(inputName)) {
-                return ctx.inputs.get(inputName).getValue();
+                return ctx.inputs.get(inputName).currentValue;
             }
 
             const newSliderInput = {
@@ -714,9 +714,6 @@ const builtinFunctionsMap = {
                 minValue: minValue && minValue.val,
                 maxValue: maxValue && maxValue.val,
                 stepValue: step && step.val,
-                getValue() {
-                    return this.currentValue;
-                }
             }
             ctx.inputs.set(inputName, newSliderInput);
 
@@ -1614,7 +1611,7 @@ function createProgramContext(text, existingInputs) {
 }
 
 function evaluateProgram(program, text, {
-    existingInputs = null
+    existingInputs
 } = {}) {
     const ctx = createProgramContext(text, existingInputs);
 
