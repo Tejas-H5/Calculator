@@ -172,7 +172,7 @@ print(line)
         expected: (res) => {
             const mat = res.programResult;
             assert(mat.vt === VT_TENSOR, "Expected a tensor");
-            assert(mat.shape[0] === 2 && mat.shape[1] === 4, "Wanted a 2x4");
+            assert(mat.shape[0] === 4 && mat.shape[1] === 2, "Wanted a 4x2");
 
             for (let i = 0; i < mat.data.length; i += 2) {
                 assert(mat.data[i] === 1, "wanted x coords to be 1");

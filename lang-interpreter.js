@@ -202,6 +202,7 @@ const binOpMatrix = {
         [VT_TENSOR]: {
             "**": (ctx, a, b) => {
                 if (a.shape.length === 1 && b.shape.length === 1 && a.shape[0] === b.shape[0]) {
+                    // two 1xn matrices aka vectors. Let's just dot them.
                     let sum = 0;
                     for (let i = 0; i < a.data.length; i++) {
                         sum += a.data[i] * b.data[i];
@@ -209,38 +210,47 @@ const binOpMatrix = {
                     return makeNumber(sum);
                 }
 
-                // matrix multiplication
-                let aW = a.shape.length === 1 ? a.shape[0] : a.shape[1];
-                let bW = b.shape.length === 0 ? 1 : b.shape[1] || 1;
-                let aH = a.shape.length === 1 ? 1 : a.shape[0];
-                let bH = b.shape.length === 1 ? b.shape[0] : b.shape[0];
-
                 if (a.shape.length > 2 || b.shape.length > 2) {
                     return makeErr(ctx, `matrix multiplication only works with matrices/vectors for now`);
                 }
-                if (aW !== bH) {
+
+                // get matrix dimensions. if its a vector, then the length will be the row/col size depending on if
+                // it is a or b
+                let aCols = a.shape.length === 1 ? a.shape[0] : a.shape[1];
+                let aRows = a.shape.length === 1 ? 1 : a.shape[0];
+
+                let bCols = b.shape.length === 1 ? 1 : b.shape[1] || 1;
+                let bRows = b.shape.length === 1 ? b.shape[0] : b.shape[0];
+
+                
+                if (aCols !== bRows) {
                     return makeErr(
                         ctx,
-                        `second matrix row count (${bH}) must equal first matrix column count ${aW}`
+                        `second matrix row count (${bRows}) must equal first matrix column count ${aCols}`
                     );
                 }
 
-                const newData = Array(bW * aH);
+                const newData = Array(aRows * bCols);
 
-                for (let i = 0; i < bW; i++) {
-                    for (let j = 0; j < aH; j++) {
+                // for each row r in a, we dot this row with each col c in b.
+                // we then place the result in row (r) and col (c) of the result matrix
+                for (let r = 0; r < aRows; r++) {
+                    for (let c = 0; c < bCols; c++) {
                         let dotP = 0;
-                        for (let k = 0; k < bH; k++) {
-                            dotP += a.data[k + j * aW] * b.data[i + k * bW];
+                        for (let k = 0; k < bRows; k++) {
+                            dotP += a.data[k + r * aCols] * b.data[c + k * bCols];
                         }
-                        newData[i + j * bW] = dotP;
+
+                        newData[c + r * bCols] = dotP;
                     }
                 }
 
                 return {
                     vt: VT_TENSOR,
                     data: newData,
-                    shape: [bW, aH]
+                    shape: aRows === 1 ? [bCols] : 
+                        bCols === 1 ? [aRows] :
+                        [aRows, bCols]
                 };
             },
 
