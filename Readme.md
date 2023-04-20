@@ -13,9 +13,7 @@ But also consider moving whatever it is you are working on to a real programming
 
 ## Immediate next steps
 
-- Theme. 
-    - convert everything to dark theme
-    - Methods and function calls should have different syntax highlighting
+- !! Have a thing in the middle the screen to resize code/output windows
 
 - A button to share a link to a computation. May run into a URL length limit but thats fine.
 
@@ -23,22 +21,19 @@ But also consider moving whatever it is you are working on to a real programming
     - Better error reporting from the parser. Right now, our error is "couldn't read blah". really, as we are parsing, we should keep track of which error was furthest along in the code, and then report that one instead, as that will probably be what we want to fix.
     This has happened, but have been unable to reproduce it. Will come back to this later
 
-- Still not obvious that matrix multiplication and dot product is ** and not *
+- Still not obvious that matrix multiplication and dot product is ** and not *, need to fix this somehow
 
-- Have a thing in the middle the screen to resize code/output windows
-
-- Then, set up node so that we can use modules. And then set up a minifier and maybe a transpiler. And html and css type string literals.
-
-
+- Set up NodeJS so that we can use modules, and have better tooling in general. This project started off being fun, but it is a pain in the ass to read this code after working with a React codebase
 
 
 ## Overarching Feature plans
+
+Note: As there are other things I want to be working on, I may never get to these:
 
 - 2D/3D wireframe/mesh visualisation
     - vector/matrix/quaternion funcs
         - Tensors already exist, and matrix multiplication already exists (I couldn't figure out Tensor multiplication, also I don't know how useful that would be to sink a couple weeks into)
 - Audio generation and visualisation
-- Some way to bind a program variable to UI that a user can interact with and rerun the program
 - Some way to bind a program variable to time and rerun the program with requestAnimationFrame
 - Some way to bind a program variable to key inputs?
 
