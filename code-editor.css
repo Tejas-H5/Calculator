@@ -6,16 +6,16 @@
 
 .line-numbers {
     color: #aaaaaa;
-    background-color: #000000;
+    background-color: var(--bg-col);
     outline: none;
-    border-right: 1px solid #aaaaaa;
+    border-right: 1px solid var(--fg-col-2);
     padding: 5px;
     min-height: 60px;
 }
 
 .code-editing {
     font-family: 'Source Code Pro', monospace;
-    color: #ffffff;
+    color: var(--fg-col);
     white-space: pre;
     min-height: 60px;
     tab-size: 4;
@@ -23,7 +23,7 @@
     z-index: 1;
     color: transparent;
     background-color: transparent;
-    caret-color: white;
+    caret-color: var(--fg-col);
 }
 
 textarea.code-editing {
@@ -57,8 +57,8 @@ textarea.code-editing {
 .code-highlighting {
     z-index: 0;
     padding-right: 10px;
-    background-color: #000000;
-    color: #FFFFFF;
+    background-color: var(--bg-col);
+    color: var(--fg-col);
     display: inline-block;
 }
 
@@ -81,3 +81,13 @@ textarea.code-editing {
     min-width:100%;
     display:inline-block;
 }
+
+.hl-comment{ color:#AAAAAA; }
+.hl-number{ color:#3ABEFF; }
+.hl-string { color:#FF7F00; }
+.hl-op { color:#FFFFFF; }
+.hl-ident{ color:#FFE03B;font-style:italic; }
+.hl-block { color:#FF00FF; }
+.hl-assign { color:#00FF00; }
+.hl-default { color:#FFFFFF; }
+.hl-fn-call { color: #00ff88}

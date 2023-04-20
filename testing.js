@@ -362,7 +362,16 @@ A := I(4);
 v := [1,2,3,4]
 
 A ** v`,
-        expected: "shape: 1x4, data: [[1,  2,  3,  4]]"
+        expected: (ctx) => {
+            const res = ctx.programResult;
+            assert(res.vt === VT_TENSOR, "res.vt === VT_TENSOR");
+            assert(res.shape.length === 1, "res.shape.length === 1");
+            assert(res.shape[0] === 4, "res.shape[0] === 4");
+            assert(res.data[0] === 1, "res.data[0] === 1");
+            assert(res.data[1] === 2, "res.data[1] === 2");
+            assert(res.data[2] === 3, "res.data[2] === 3");
+            assert(res.data[3] === 4, "res.data[3] === 4");
+        }
     },
     {
         name: "matrix transpose",
