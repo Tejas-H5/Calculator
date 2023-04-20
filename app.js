@@ -41,6 +41,10 @@ function App(mountPoint) {
         testingHarness.onTestcaseSelect = (testCase) => {
             window.scrollTo(0, 0);
             codeEditor.setCode(testCase.input.trim())
+        };
+
+        testingHarness.onWantRetest = () => {
+            testingHarness.renderTests(testcases, false);
         }
     }
 

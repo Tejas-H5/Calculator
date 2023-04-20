@@ -417,7 +417,6 @@ function renderPaths2D(state, pointLists, canvasRootCtx, { maintainAspectRatio }
 
     const cssVar = (name) => {
         const val = getComputedStyle(canvasRoot).getPropertyValue(name);
-        console.log(val);
         return val;
     }
 

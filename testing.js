@@ -1,9 +1,20 @@
 function TestingHarness(mountPoint) {
-    const { testTable } = createComponent(
+    const { 
+        testTable, showPassingInput, showFailingInput, showUnknown,
+        passingCount, failingCount, manualCount
+    } = createComponent(
         mountPoint,
         `<div style="padding: 10px">
             <div style="margin-top: 20px">
                 <h3 title="these are really test cases">Examples</h3>
+                <div>
+                <input type="checkbox" --id="showPassingInput"></input>
+                <span --id="passingCount">Passing</span>,
+                <input type="checkbox" --id="showFailingInput" checked></input>
+                <span --id="failingCount">Failing</span>,
+                <input type="checkbox" --id="showUnknown" checked></input>
+                <span --id="manualCount">Requiring manual inspection</span>
+                </div>
                 <table --id="testTable" style="width: 100%"></table>
             </div>
         </div>`
@@ -11,21 +22,70 @@ function TestingHarness(mountPoint) {
 
     const state = {
         onTestcaseSelect: (testcase) => {},
+        onWantRetest: () => {},
         renderTests: (testCases, onlyShowInteresting) => {
-            renderTests(state, testTable, testCases, onlyShowInteresting);
+            const { passes, fails, manual } = renderTests(state, testTable, testCases, (testcase) => {
+                return  (!testcase.isVisualTest && testcase.isPassing && showPassingInput.checked) ||
+                        (!testcase.isVisualTest && !testcase.isPassing && showFailingInput.checked) ||
+                        (testcase.isVisualTest && showUnknown.checked);
+            });
+
+            passingCount.textContent = "Passing: " + passes;
+            failingCount.textContent = "Passing: " + fails;
+            manualCount.textContent = "Needs manual verification: " + manual;
         }
     };
+
+    showPassingInput.addEventListener("change", () => state.onWantRetest());
+    showFailingInput.addEventListener("change", () => state.onWantRetest());
+    showUnknown.addEventListener("change", () => state.onWantRetest());
 
     return state;
 }
 
 // TODO: componentize this (the old codebase was vanillaJS, so it was doing string building everywhere)
-function renderTests(state, mountPoint, testcases, onlyShowInteresting) {
+function renderTests(state, mountPoint, testcases, shouldShowTest) {
     let passes = 0,
         fails = 0,
         manual = 0;
 
-    let tests = testcases.filter((testcase) => (onlyShowInteresting ? testcase.alwaysShow : true));
+    testcases.forEach((testcase) => {
+        testcase.isPassing = true;
+        testcase.strOutput = ""
+
+        let expected = "";
+
+        try {
+            const text = testcase.input;
+            const ast = parseProgram(text);
+            const results = evaluateProgram(ast, text);
+            testcase.strOutput = valueToString(results.programResult);
+
+            if (typeof testcase.expected === "string") {
+                expected = testcase.expected;
+                testcase.isPassing = testcase.expected.replace(/\s/g, "") === testcase.strOutput.replace(/\s/g, "");
+            } else {
+                testcase.expected(results);
+            }
+        } catch (e) {
+            testcase.strOutput = "Exception";
+            console.error(e);
+            expected = e.message || "";
+            testcase.isPassing = false;
+        }
+
+        if (!testcase.isVisualTest) {
+            if (testcase.isPassing) {
+                passes++;
+            } else {
+                fails++;
+            }
+        } else {
+            manual++;
+        }
+    });
+
+    const tests = testcases.filter(shouldShowTest);
 
     let testcaseTableHTML =
         `
@@ -33,40 +93,6 @@ function renderTests(state, mountPoint, testcases, onlyShowInteresting) {
     ` +
         tests
             .map((testcase, i) => {
-                let output = "",
-                    isPassing = true;
-
-                let expected = "";
-
-                try {
-                    const text = testcase.input;
-                    const ast = parseProgram(text);
-                    const results = evaluateProgram(ast, text);
-                    output = valueToString(results.programResult);
-
-                    if (typeof testcase.expected === "string") {
-                        expected = testcase.expected;
-                        isPassing = testcase.expected.replace(/\s/g, "") === output.replace(/\s/g, "");
-                    } else {
-                        testcase.expected(results);
-                    }
-                } catch (e) {
-                    output = "Exception";
-                    console.error(e);
-                    expected = e.message || "";
-                    isPassing = false;
-                }
-
-                if (!testcase.isVisualTest) {
-                    if (isPassing) {
-                        passes++;
-                    } else {
-                        fails++;
-                    }
-                } else {
-                    manual++;
-                }
-
                 return `
                 <tr>
                     <td class="testcase-button" data-testcase-id="${i}">
@@ -75,20 +101,20 @@ function renderTests(state, mountPoint, testcases, onlyShowInteresting) {
                             ${sanitizeHTML(testcase.input)}
                         </p>
                     </td>
-                    <td class="${testcase.isVisualTest ? "" : isPassing ? "passing" : "failing"}" title="${
+                    <td class="${testcase.isVisualTest ? "" : testcase.isPassing ? "passing" : "failing"}" title="${
                     testcase.isVisualTest
                         ? "this test must be manually inspected"
-                        : isPassing
+                        : testcase.isPassing
                         ? "this testcase is passing"
                         : "this testcase is failing"
                 }">
                         ${
-                            isPassing
-                                ? truncate(sanitizeHTML(output), 70)
+                            testcase.isPassing
+                                ? truncate(sanitizeHTML(testcase.strOutput), 70)
                                 : `
                                 <h4>Got:</h4>
                                 <p>
-                                    ${sanitizeHTML(output)}
+                                    ${sanitizeHTML(testcase.strOutput)}
                                 </p>
                                 <h4>Expected:</h4>
                                 <p>
@@ -101,15 +127,6 @@ function renderTests(state, mountPoint, testcases, onlyShowInteresting) {
             })
             .join("\n");
 
-    if (!onlyShowInteresting) {
-        testcaseTableHTML =
-            `
-            <p>
-                Passing: ${passes}, Failing: ${fails}, Requiring manual inspection: ${manual};
-            </p>
-        ` + testcaseTableHTML;
-    }
-
     mountPoint.innerHTML = testcaseTableHTML;
     for (let id = 0; id < tests.length; id++) {
         const button = mountPoint.querySelector(`.testcase-button[data-testcase-id="${id}"]`);
@@ -117,6 +134,8 @@ function renderTests(state, mountPoint, testcases, onlyShowInteresting) {
             state.onTestcaseSelect(tests[parseInt(button.getAttribute("data-testcase-id"))]);
         });
     }
+
+    return { passes, fails, manual };
 }
 
 function truncate(t, len) {
@@ -133,7 +152,7 @@ function truncate(t, len) {
 const testcases = [
     {
         name: "Slider test",
-        input:`
+        input: `
 // trying to draw a clock looking thing 
 granularity := slider("granularity", 5, 5, 36, 1)
 theta := slider("angle", 0, 0, 2*PI, 2*PI/granularity);
