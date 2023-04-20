@@ -1,3 +1,8 @@
+:root {
+    --gridline-col: #ffffff5b;
+}
+
+
 .error {
     color: #ff0000;
 }

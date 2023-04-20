@@ -36,45 +36,45 @@ function OutputView(mountPoint, ctx) {
 }
 
 function renderErrors(state, mountPoint, programCtx) {
-    if (programCtx.errors.length === 0) {
-        return
-    }
-
     const outputs = [];
 
-    // Display all errors that we encountered
-    const errors = programCtx.errors;
-
-    // ensure that errors caused by the same code are collapsed into a single
-    // error message to save output space
-    const errorSpots = new Map();
-
-    for (let i = 0; i < errors.length; i++) {
-        const err = errors[i];
-        const ast = err.astNode;
-        if (!ast) {
-            // can't localize this to a particular node.
-            continue;
+    if (programCtx.errors.length > 0) {
+        // Display all errors that we encountered
+        const errors = programCtx.errors;
+    
+        // ensure that errors caused by the same code are collapsed into a single
+        // error message to save output space
+        const errorSpots = new Map();
+        for (let i = 0; i < errors.length; i++) {
+            const err = errors[i];
+            const ast = err.astNode;
+            if (!ast) {
+                // can't localize this to a particular node.
+                continue;
+            }
+    
+            if (!errorSpots.has(ast)) {
+                errorSpots.set(ast, []);
+            }
+    
+            const errorList = errorSpots.get(ast);
+            errorList.push(err);
         }
-
-        if (!errorSpots.has(ast)) {
-            errorSpots.set(ast, []);
+    
+    
+        // create errors
+        for (const [ast, errors] of errorSpots.entries()) {
+            const astText = programCtx.text.substring(ast.start, ast.end);
+            const lineNumber = ast.lineNumber;
+            const errorsPlural = errors.length === 1 ? "Error" : `${errors.length} errors`;
+            const title = `${errorsPlural} at ln ${lineNumber} ( ${truncate(astText, 30)} )`;
+            OutputTextResult(outputs, {
+                title: title,
+                val: errors[0]
+            });
         }
-
-        const errorList = errorSpots.get(ast);
-        errorList.push(err);
     }
 
-    for (const [ast, errors] of errorSpots.entries()) {
-        const astText = programCtx.text.substring(ast.start, ast.end);
-        const lineNumber = ast.lineNumber;
-        const errorsPlural = errors.length === 1 ? "Error" : `${errors.length} errors`;
-        const title = `${errorsPlural} at ln ${lineNumber} ( ${truncate(astText, 30)} )`;
-        OutputTextResult(outputs, {
-            title: title,
-            val: errors[0]
-        });
-    }
 
     replaceChildren(mountPoint, outputs);
 }
@@ -325,7 +325,7 @@ function PathOutputResult(mountPoint) {
         domainOffsetX: 0,
         domainOffsetY: 0,
         renderPaths(paths, { maintainAspectRatio }) {
-            renderPaths2D(this, paths, canvasRootCtx, {
+            renderPaths2D(state, paths, canvasRootCtx, {
                 maintainAspectRatio: maintainAspectRatio
             });
         },
@@ -468,7 +468,7 @@ function renderPaths2D(state, pointLists, canvasRootCtx, { maintainAspectRatio }
 
     // grid
     {
-        canvasRootCtx.strokeStyle = cssVar("--fg-col")
+        canvasRootCtx.strokeStyle = cssVar("--gridline-col")
         canvasRootCtx.lineWidth = 1;
 
         const getGoodGridSpacing = (width) => {

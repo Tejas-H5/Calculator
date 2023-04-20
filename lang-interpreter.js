@@ -712,11 +712,18 @@ const builtinFunctionsMap = {
     slider: {
         args: [],
         fn: (ctx, name, initialValue, minValue, maxValue, step) => {
+            if (
+                !name || name.vt !== VT_STRING ||
+                !initialValue || initialValue.vt !== VT_NUMBER ||
+                minValue && minValue.vt !== VT_NUMBER ||
+                maxValue && maxValue.vt !== VT_NUMBER ||
+                step && step.vt !== VT_NUMBER
+            ) {
+                return makeErr(ctx, `the slider function takes arguments like slider(name, initialValue, minValue=0, maxValue=1, step=1)`);
+            }
+
             // TODO: enforce that it's a constant string.
             // this also means that we can't add sliders within loops.
-            if (name.vt !== VT_STRING) {
-                return makeErr(`The first argument for a slider must be it's name. e.g: x := slider("cool value", 0, 1, 0.1);`)
-            }
             const inputName = name.val;
 
             if (!ctx.inputs.has(inputName)) {
@@ -730,9 +737,9 @@ const builtinFunctionsMap = {
 
             const sliderInput = ctx.inputs.get(inputName);
 
-            sliderInput.minValue = minValue && minValue.val;
-            sliderInput.maxValue = maxValue && maxValue.val;
-            sliderInput.stepValue = step && step.val;
+            sliderInput.minValue = minValue ? minValue.val : 0;
+            sliderInput.maxValue = maxValue ? maxValue.val : 1;
+            sliderInput.stepValue = step ? step.val : 1;
 
             return sliderInput.currentValue;
         }
