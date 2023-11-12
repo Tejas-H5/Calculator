@@ -1,4 +1,4 @@
-# A general-purpose programming-based calculator (try it [here](https://tejas-h5.github.io/Calculator/calculator.html))
+# A general-purpose programming-based calculator (try it [here](https://tejas-h5.github.io/Custom-Language-Interpreter/calculator.html))
 
 I often find that when I am programming something and need to test a calculation, or if I need a calculator for any other reason, I will often reach for the search-bar in a new tab in the browser, because a single text-field where I can type my equation is a much better interface than what is provided on most calculator apps.
 
